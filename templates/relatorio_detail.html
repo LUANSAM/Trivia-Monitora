@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% block title %}Detalhes da viagem{% endblock %}
+{% block content %}
+<section class="card relatorio-detail">
+    <header class="section-header">
+        <div>
+            <h2>Detalhes da viagem</h2>
+        </div>
+        <button id="print-detail" class="icon-button" type="button" aria-label="Imprimir PDF">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9V2h12v7" />
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                <path d="M6 14h12v8H6z" />
+            </svg>
+            <span>Imprimir</span>
+        </button>
+    </header>
+
+    {% macro format_date(date_str) %}
+        {%- if date_str -%}
+            {%- set parts = date_str.split('-') -%}
+            {%- if parts|length == 3 -%}
+                {{ parts[2] ~ '/' ~ parts[1] ~ '/' ~ parts[0] }}
+            {%- else -%}
+                {{ date_str }}
+            {%- endif -%}
+        {%- else -%}
+            -
+        {%- endif -%}
+    {% endmacro %}
+
+    <style>
+        .relatorio-detail .section-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+        .relatorio-detail .eyebrow { text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: #475569; margin: 0 0 0.25rem; }
+        .relatorio-detail .subtle { margin: 0; color: #475569; }
+        .icon-button { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.75rem; border: 1px solid #d0d7de; background: #f7f9fb; color: #0f172a; border-radius: 6px; cursor: pointer; }
+        .icon-button:hover { background: #e8edf2; }
+        .meta-table, .compare-table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+        .meta-table th, .meta-table td, .compare-table th, .compare-table td { padding: 0.65rem 0.75rem; border: 1px solid #e2e8f0; text-align: left; vertical-align: top; }
+        .meta-table th { background: #f8fafc; width: 18%; color: #0f172a; font-size: 0.85rem; font-weight: 600; }
+        .meta-table td { background: #fff; color: #000; }
+        /* Tipografia responsiva na tabela superior */
+        .meta-table th, .meta-table td { font-size: 0.95rem; }
+        .meta-table .date-line { font-weight: 600; font-size: 0.95rem; line-height: 1.15; }
+        .meta-table .time-line { font-size: 0.85rem; color: #475569; margin-top: 2px; }
+        .compare-table th { background: #f8fafc; color: #0f172a; }
+        .compare-table td { background: #fff; color: #000; }
+        /* Alinhamento: por padrão centralizar, com exceções à esquerda */
+        .meta-table th, .meta-table td { text-align: center; }
+        .meta-table .align-left { text-align: left; }
+        /* Compactar linhas (apenas corpo) das tabelas de comparação */
+        .compare-table tbody td { padding: 0.35rem 0.5rem; }
+        .compare-table tbody tr { line-height: 1.15; }
+        .compare-table tbody .pill { padding: 0.08rem 0.4rem; font-size: 0.8rem; }
+        .compare-table tbody .note { margin-top: 0.15rem; font-size: 0.85rem; }
+        .pill { display: inline-block; padding: 0.15rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 999px; font-size: 0.85rem; }
+        .note { margin-top: 0.25rem; color: #475569; font-size: 0.9rem; }
+        .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+        .section-block { border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; }
+        .section-block h3 { margin: 0 0 0.5rem; }
+        .footer-highlight { margin-top: 1.5rem; padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; display: flex; justify-content: space-between; gap: 1rem; }
+        .footer-highlight div { font-weight: 600; }
+        .fuel { color: #0f172a; }
+        @media screen and (max-width: 550px) {
+            .relatorio-detail .section-header { flex-direction: column; align-items: flex-start; }
+            .meta-table th, .meta-table td, .compare-table th, .compare-table td { padding: 0.4rem 0.5rem; font-size: 0.8rem; }
+            .compare-table tbody td { padding: 0.3rem 0.4rem; }
+            .compare-table tbody .pill { font-size: 0.75rem; padding: 0.06rem 0.35rem; }
+            .compare-table tbody .note { font-size: 0.78rem; }
+            .meta-table th { width: 25%; }
+            .pill { font-size: 0.75rem; padding: 0.1rem 0.4rem; }
+            .note { font-size: 0.8rem; }
+            .section-block { padding: 0.75rem; }
+            .section-block h3 { font-size: 1rem; }
+            .relatorio-detail h2 { font-size: 1.25rem; }
+            .icon-button { font-size: 0.85rem; padding: 0.35rem 0.6rem; }
+            .icon-button svg { width: 16px; height: 16px; }
+        }
+        @media print {
+            body, .card, .relatorio-detail, table, th, td { background: #fff !important; color: #000 !important; }
+            nav, header.site-header, .icon-button { display: none !important; }
+            .footer-highlight { background: #fff !important; }
+        }
+    </style>
+
+    <style>
+        /* Lista de metadados no topo: linhas de texto, sem tabela */
+        .meta-list { margin: 1rem 0; display: flex; flex-direction: column; gap: 0.35rem; }
+        .meta-item { line-height: 1.3; font-size: 0.95rem; color: #fff; }
+        .meta-item strong { font-weight: 700; margin-right: 6px; }
+        .meta-item .muted { color: #475569; }
+        @media print {
+            .meta-item,
+            .meta-item strong,
+            .meta-item .muted { color: #000 !important; }
+        }
+    </style>
+
+    <div class="meta-list">
+        <div class="meta-item"><strong>Veículo:</strong> {{ (veiculo.modelo ~ ' · ' ~ veiculo.placa) if veiculo else (cab_partida.modelo ~ ' · ' ~ cab_partida.placa) }}</div>
+        <div class="meta-item"><strong>Condutor:</strong> {{ condutor or '-' }}</div>
+        <div class="meta-item">
+            <strong>Saída:</strong>
+            {% if cab_partida.data_saida or cab_partida.hora_saida %}
+                {{ cab_partida.data_saida and format_date(cab_partida.data_saida) or '' }}{% if cab_partida.data_saida and cab_partida.hora_saida %} · {% endif %}{{ cab_partida.hora_saida or '' }}
+            {% else %}-{% endif %}
+        </div>
+        <div class="meta-item">
+            <strong>Entrega:</strong>
+            {% if cab_entrega %}
+                {{ cab_entrega.data_chegada and format_date(cab_entrega.data_chegada) or '' }}{% if cab_entrega.data_chegada and cab_entrega.hora_chegada %} · {% endif %}{{ cab_entrega.hora_chegada or '' }}
+            {% else %}Em aberto{% endif %}
+        </div>
+        <div class="meta-item"><strong>Combustível Saída:</strong> {{ combustivel_saida or '-' }}</div>
+        <div class="meta-item"><strong>Combustível Chegada:</strong> {{ combustivel_chegada or '-' }}</div>
+        <div class="meta-item"><strong>Percurso:</strong> {{ distancia_km if distancia_km is not none else '-' }}{% if distancia_km is not none %} km{% endif %}</div>
+        <div class="meta-item"><strong>Trajeto:</strong> {{ cab_partida.trajeto or '-' }}</div>
+    </div>
+
+    <div class="section-block">
+        <h3>Checklist de componentes</h3>
+        <table class="compare-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Partida</th>
+                    <th>Entrega</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in componentes_alinhados %}
+                    <tr>
+                        <td>{{ row.label }}</td>
+                        <td>
+                            <span class="pill">{{ row.partida.status or '-' }}</span>
+                            {% if row.partida.observacao %}<div class="note">{{ row.partida.observacao }}</div>{% endif %}
+                        </td>
+                        <td>
+                            <span class="pill">{{ row.entrega.status or '-' }}</span>
+                            {% if row.entrega.observacao %}<div class="note">{{ row.entrega.observacao }}</div>{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section-block">
+        <h3>Riscos e pontos</h3>
+        <table class="compare-table">
+            <thead>
+                <tr>
+                    <th>Ponto</th>
+                    <th>Partida</th>
+                    <th>Entrega</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in riscos_alinhados %}
+                    <tr>
+                        <td>{{ row.label }}</td>
+                        <td>
+                            <span class="pill">{{ row.partida.status or '-' }}</span>
+                            {% if row.partida.observacao %}<div class="note">{{ row.partida.observacao }}</div>{% endif %}
+                        </td>
+                        <td>
+                            <span class="pill">{{ row.entrega.status or '-' }}</span>
+                            {% if row.entrega.observacao %}<div class="note">{{ row.entrega.observacao }}</div>{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+<script>
+    document.getElementById('print-detail')?.addEventListener('click', () => window.print());
+</script>
+{% endblock %}

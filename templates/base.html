@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Controle de Rodagem{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="app-header">
+            <a class="header-link" href="{{ url_for('dashboard') if session.get('user') else url_for('home') }}">
+                <div class="header-brand">
+                    <h1>Controle de Rodagem</h1>
+                </div>
+                <div class="header-logo">
+                    <img src="{{ url_for('serve_public_asset', filename='logo.png') }}" alt="Logo Trivia" loading="lazy">
+                </div>
+            </a>
+        </header>
+
+        
+
+        <main class="app-main">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+    <script>
+        // Sistema de limpeza de dados ao fazer logout
+        document.addEventListener('DOMContentLoaded', function() {
+            // Encontrar todos os links de logout
+            const logoutLinks = document.querySelectorAll('a[href="{{ url_for("logout") }}"]');
+            
+            logoutLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    // Limpar todos os dados armazenados localmente
+                    console.log('Limpando dados temporários...');
+                    
+                    // Limpar localStorage
+                    localStorage.clear();
+                    
+                    // Limpar sessionStorage
+                    sessionStorage.clear();
+                    
+                    // Limpar cookies de sessão (se houver)
+                    document.cookie.split(";").forEach(function(c) {
+                        document.cookie = c
+                            .replace(/^ +/, "")
+                            .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+                    });
+                    
+                    console.log('Dados temporários removidos. Redirecionando para login...');
+                    
+                    // Permitir navegação normal para /logout
+                    // A requisição ao servidor irá:
+                    // 1. Revogar autenticação no Supabase (se disponível)
+                    // 2. Limpar session.clear() no Flask
+                    // 3. Redirecionar para login
+                });
+            });
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

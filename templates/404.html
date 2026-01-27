@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Não encontrado{% endblock %}
+{% block content %}
+<section class="card empty-state">
+    <h2>Página não encontrada</h2>
+    <p>Verifique o endereço ou volte ao painel.</p>
+    <a class="btn btn-primary" href="{{ url_for('dashboard') }}">Voltar</a>
+</section>
+{% endblock %}

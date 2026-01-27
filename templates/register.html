@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Cadastro · Controle de Rodagem{% endblock %}
+{% block content %}
+<section class="card auth-card">
+    <div class="auth-tabs" role="tablist">
+        <a href="{{ url_for('login') }}" class="auth-tab {{ 'active' if active_tab == 'login' else '' }}" role="tab" aria-selected="{{ 'true' if active_tab == 'login' else 'false' }}">Entrar</a>
+        <a href="{{ url_for('register') }}" class="auth-tab {{ 'active' if active_tab == 'register' else '' }}" role="tab" aria-selected="{{ 'true' if active_tab == 'register' else 'false' }}">Cadastrar</a>
+    </div>
+    <div class="card-header">
+        <h2>Crie sua conta</h2>
+        <p>Preencha os dados para solicitar acesso</p>
+    </div>
+    <form method="post" class="form-grid simple">
+        <label class="full-row">
+            <span>Nome completo</span>
+            <input type="text" name="nome" placeholder="Maria da Silva" autocomplete="name" required>
+        </label>
+        <label>
+            <span>E-mail corporativo</span>
+            <input type="email" name="email" placeholder="voce@empresa.com" autocomplete="email" required>
+        </label>
+        <label>
+            <span>Empresa</span>
+            <!-- As opções abaixo vêm de REGISTER_COMPANIES definido em app.py -->
+            <div class="select-wrapper">
+                <select name="empresa" required>
+                    <option value="">Selecione uma empresa</option>
+                    {% for empresa in empresas %}
+                        <option value="{{ empresa.label }}" data-id="{{ empresa.id }}">{{ empresa.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </label>
+        <label>
+            <span>Área ou setor</span>
+            <!-- As opções abaixo vêm de REGISTER_AREAS definido em app.py -->
+            <div class="select-wrapper">
+                <select name="area" required>
+                    <option value="">Selecione a área</option>
+                    {% for area in areas %}
+                        <option value="{{ area.label }}" data-id="{{ area.id }}">{{ area.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </label>
+        <label>
+            <span>Senha</span>
+            <div class="input-with-toggle">
+                <input type="password" name="password" id="registerPassword" minlength="6" autocomplete="new-password" required>
+                <button type="button" class="toggle-password" data-target="registerPassword" aria-label="Mostrar senha">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 11.5A4.5 4.5 0 1 1 12 8a4.5 4.5 0 0 1 0 9zm0-2.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
+                    </svg>
+                </button>
+            </div>
+        </label>
+        <label>
+            <span>Confirme a senha</span>
+            <div class="input-with-toggle">
+                <input type="password" name="password_confirm" id="registerPasswordConfirm" minlength="6" autocomplete="new-password" required>
+                <button type="button" class="toggle-password" data-target="registerPasswordConfirm" aria-label="Mostrar senha">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 11.5A4.5 4.5 0 1 1 12 8a4.5 4.5 0 0 1 0 9zm0-2.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
+                    </svg>
+                </button>
+            </div>
+        </label>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-large">Cadastrar</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

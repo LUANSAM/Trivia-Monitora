@@ -1,0 +1,304 @@
+{% extends 'base.html' %}
+{% block title %}Usuários{% endblock %}
+{% block content %}
+<section class="card">
+    <header class="section-header">
+        <h2>Usuários cadastrados</h2>
+    </header>
+    <div class="search-container">
+        <input 
+            type="text" 
+            id="usuariosSearch" 
+            class="search-input" 
+            placeholder="Pesquisar por nome..."
+        >
+    </div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th>Empresa</th>
+                    <th>Área</th>
+                    <th>Autorizado</th>
+                    <th>Criado em</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for usuario in usuarios %}
+                    {% set created_date = usuario.created_at %}
+                    {% set formatted_date = created_date[:10] | replace('-', '/') if created_date else 'N/A' %}
+                    {% if created_date and 'T' in created_date %}
+                        {% set time_part = created_date.split('T')[1][:5] if 'T' in created_date else '' %}
+                        {% set formatted_date = created_date[:10] | replace('-', '/') ~ ' - ' ~ time_part %}
+                    {% endif %}
+                    <tr>
+                        <td>{{ usuario.nome }}</td>
+                        <td>{{ usuario.email }}</td>
+                        <td>{{ usuario.empresa }}</td>
+                        <td>{{ usuario.area }}</td>
+                        <td>
+                            <select class="user-status-select" data-user-id="{{ usuario.id }}" data-current="{{ usuario.autorizado | lower }}">
+                                <option value="true" {% if usuario.autorizado %}selected{% endif %}>Sim</option>
+                                <option value="false" {% if not usuario.autorizado %}selected{% endif %}>Não</option>
+                            </select>
+                        </td>
+                        <td>{{ formatted_date }}</td>
+                        <td class="actions-cell">
+                            <button class="btn-icon btn-edit" title="Editar usuário" data-user-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}" data-empresa="{{ usuario.empresa }}" data-area="{{ usuario.area }}">
+                                ✏️
+                            </button>
+                            <button class="btn-icon btn-delete" title="Excluir usuário" data-user-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">
+                                🗑️
+                            </button>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- Modal de Edição de Usuário -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Editar usuário</h3>
+            <button class="modal-close" data-dismiss="modal">&times;</button>
+        </div>
+        <form id="editForm" class="modal-form">
+            <input type="hidden" id="editUserId" name="user_id">
+            
+            <label>
+                <span>Nome</span>
+                <input type="text" id="editNome" name="nome" required>
+            </label>
+            
+            <label>
+                <span>Empresa</span>
+                <select id="editEmpresa" name="empresa" required>
+                    <option value="">Selecione a empresa...</option>
+                    <option value="Trivia Trens">Trivia Trens</option>
+                    <option value="Tic Trens">Tic Trens</option>
+                </select>
+            </label>
+            
+            <label>
+                <span>Área</span>
+                <select id="editArea" name="area" required>
+                    <option value="">Selecione a área...</option>
+                    <option value="Restabelecimento">Restabelecimento</option>
+                    <option value="Energia">Energia</option>
+                    <option value="Sinalização">Sinalização</option>
+                    <option value="Telecom">Telecom</option>
+                    <option value="Engenharia">Engenharia</option>
+                </select>
+            </label>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar alterações</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal de Confirmação de Exclusão -->
+<div id="deleteModal" class="modal">
+    <div class="modal-content modal-small">
+        <div class="modal-header">
+            <h3>Confirmar exclusão</h3>
+        </div>
+        <div class="modal-body">
+            <p>Tem certeza que deseja excluir o usuário <strong id="deleteUsername"></strong>?</p>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 8px;">Esta ação não pode ser desfeita.</p>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Excluir usuário</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateSelectColor(select) {
+    const isTrue = select.value === 'true';
+    if (isTrue) {
+        select.setAttribute('data-status', 'true');
+    } else {
+        select.setAttribute('data-status', 'false');
+    }
+}
+
+// Gerenciamento de modais
+function openModal(modalId) {
+    document.getElementById(modalId).style.display = 'flex';
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
+
+// Fechar modal ao clicar no X ou Cancelar
+document.querySelectorAll('[data-dismiss="modal"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const modal = btn.closest('.modal');
+        closeModal(modal.id);
+    });
+});
+
+// Fechar modal ao clicar fora dele
+document.querySelectorAll('.modal').forEach(modal => {
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeModal(modal.id);
+        }
+    });
+});
+
+// Filtro de pesquisa
+const searchInput = document.getElementById('usuariosSearch');
+const tableRows = document.querySelectorAll('table tbody tr');
+
+searchInput.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase().trim();
+    
+    tableRows.forEach(row => {
+        const nomeCell = row.querySelector('td:first-child');
+        const nome = nomeCell ? nomeCell.textContent.toLowerCase() : '';
+        
+        if (searchTerm === '' || nome.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+
+// Inicializa cores dos dropdowns de status
+document.querySelectorAll('.user-status-select').forEach(select => {
+    updateSelectColor(select);
+    
+    select.addEventListener('change', async (e) => {
+        const userId = select.dataset.userId;
+        const newStatus = select.value === 'true';
+        
+        updateSelectColor(select);
+        
+        try {
+            const response = await fetch(`/admin/usuarios/${userId}/status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ autorizado: newStatus }),
+            });
+            
+            if (!response.ok) {
+                alert('Erro ao atualizar status do usuário');
+                select.value = select.dataset.current;
+                updateSelectColor(select);
+            }
+        } catch (error) {
+            console.error('Erro:', error);
+            alert('Erro ao atualizar status do usuário');
+            select.value = select.dataset.current;
+            updateSelectColor(select);
+        }
+    });
+});
+
+// Botões de edição
+document.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const userId = btn.dataset.userId;
+        const nome = btn.dataset.nome;
+        const empresa = btn.dataset.empresa;
+        const area = btn.dataset.area;
+        
+        document.getElementById('editUserId').value = userId;
+        document.getElementById('editNome').value = nome;
+        document.getElementById('editEmpresa').value = empresa;
+        document.getElementById('editArea').value = area;
+        
+        openModal('editModal');
+    });
+});
+
+// Submit do formulário de edição
+document.getElementById('editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const userId = document.getElementById('editUserId').value;
+    const nome = document.getElementById('editNome').value;
+    const empresa = document.getElementById('editEmpresa').value;
+    const area = document.getElementById('editArea').value;
+    
+    try {
+        const response = await fetch(`/admin/usuarios/${userId}/edit`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ nome, empresa, area }),
+        });
+        
+        if (response.ok) {
+            alert('Usuário atualizado com sucesso!');
+            location.reload();
+        } else {
+            alert('Erro ao atualizar usuário');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao atualizar usuário');
+    }
+});
+
+// Variável para armazenar o ID do usuário a ser excluído
+let userIdToDelete = null;
+
+// Botões de exclusão
+document.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', () => {
+        userIdToDelete = btn.dataset.userId;
+        const nome = btn.dataset.nome;
+        
+        document.getElementById('deleteUsername').textContent = nome;
+        openModal('deleteModal');
+    });
+});
+
+// Confirmação de exclusão
+document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+    if (!userIdToDelete) return;
+    
+    try {
+        const response = await fetch(`/admin/usuarios/${userIdToDelete}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+        
+        if (response.ok) {
+            alert('Usuário excluído com sucesso!');
+            location.reload();
+        } else {
+            alert('Erro ao excluir usuário');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao excluir usuário');
+    } finally {
+        closeModal('deleteModal');
+        userIdToDelete = null;
+    }
+});
+</script>
+{% endblock %}

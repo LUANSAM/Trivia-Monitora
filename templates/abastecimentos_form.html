@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Registrar Abastecimento{% endblock %}
+{% block content %}
+<section class="card">
+    <header class="section-header">
+        <h2>Registro de abastecimento</h2>
+    </header>
+    <form method="post" enctype="multipart/form-data" class="form-grid">
+        <label>
+            <span>Veículo</span>
+            <select name="veiculo_id" required>
+                <option value="">Selecione...</option>
+                {% for veiculo in veiculos %}
+                    <option value="{{ veiculo.id }}">{{ veiculo.modelo }} · {{ veiculo.placa }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>Data</span>
+            <input type="datetime-local" name="data">
+        </label>
+        <label>
+            <span>KM (valor digitado)</span>
+            <input type="number" name="km" required>
+        </label>
+        <label>
+            <span>Valor (R$)</span>
+            <input type="number" step="0.01" name="valor" required>
+        </label>
+        <label>
+            <span>Litros</span>
+            <input type="number" step="0.01" name="litros" required>
+        </label>
+        <label>
+            <span>Foto do hodômetro</span>
+            <input type="file" name="foto_km" accept="image/*" capture="environment" required>
+        </label>
+        <label>
+            <span>Nota fiscal (texto)</span>
+            <input type="text" name="nota_texto" placeholder="Número da nota" required>
+        </label>
+        <label>
+            <span>Foto da nota</span>
+            <input type="file" name="foto_nota" accept="image/*" capture="environment" required>
+        </label>
+        <button class="btn btn-primary" type="submit">Salvar abastecimento</button>
+    </form>
+</section>
+{% endblock %}

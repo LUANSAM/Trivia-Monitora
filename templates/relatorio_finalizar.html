@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Finalizar Viagem{% endblock %}
+{% block content %}
+{% set partida = relatorio.relatorio_partida or relatorio.relatorio or {} %}
+{% set cab = partida.cabecalho or {} %}
+<form method="post" enctype="multipart/form-data" class="report-form">
+    <section class="card">
+        <header class="section-header">
+            <h2>Resumo da partida</h2>
+            <p>
+                Veículo: {{ veiculo.modelo if veiculo else cab.modelo or '-' }} - {{ veiculo.placa if veiculo else cab.placa or '-' }}
+                <br>
+                Data/Hora: {{ cab.data_saida or '-' }} às {{ cab.hora_saida or '-' }}
+                <br>
+                Combustível na saída: {{ (partida.combustivel.saida if partida.combustivel else None) or '-' }}
+            </p>
+        </header>
+    </section>
+
+    <section class="card">
+        <header class="section-header">
+            <h2>Checklist de chegada</h2>
+            <p>Preencha todos os campos ao retornar à base.</p>
+        </header>
+        <div class="form-grid">
+            <label>
+                <span>Data e horário da chegada</span>
+                <input type="datetime-local" name="data_hora_chegada" required>
+            </label>
+            <label>
+                <span>KM final</span>
+                <input type="number" name="km_final" step="1" required>
+            </label>
+        </div>
+        <label class="full-row">
+            <span>Trajeto / breve relato do itinerário</span>
+            <textarea name="trajeto" rows="3" placeholder="Descreva o trajeto realizado"></textarea>
+        </label>
+    </section>
+
+    <section class="card">
+        <header class="section-header">
+            <div>
+                <h2>Riscos ou avarias do veículo</h2>
+            </div>
+            <div class="legend">
+                <span>C = conforme</span>
+                <span>NC = não conforme</span>
+                <span>X = não aplicável</span>
+            </div>
+        </header>
+        <div class="component-table risco-table">
+            {% for risco in risco_pontos %}
+                <div class="component-row" data-status-row>
+                    <div class="component-header">
+                        <div class="component-name">{{ risco.label }}</div>
+                        <select name="risco_status_{{ risco.id }}" class="status-select" data-status-select>
+                            <option value="C">C</option>
+                            <option value="NC">NC</option>
+                            <option value="X">X</option>
+                        </select>
+                    </div>
+                    <div class="risco-obs" data-status-obs hidden>
+                        <textarea name="risco_obs_{{ risco.id }}" rows="2" placeholder="Observações"></textarea>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        <div class="fuel-gauges">
+            {% set fuel_max_index = fuel_levels|length - 1 %}
+            <label class="full-row">
+                <span>Nível na chegada</span>
+                <div class="fuel-slider" data-fuel-control>
+                    <input type="hidden" name="combustivel_chegada" value="vazio" data-fuel-value>
+                    <input type="range"
+                           min="0"
+                           max="{{ fuel_max_index }}"
+                           step="1"
+                           value="0"
+                           data-fuel-slider
+                           aria-label="Nível de combustível na chegada">
+                    <div class="fuel-scale">
+                        {% for level in fuel_levels %}
+                            <span data-fuel-label data-value="{{ level }}">{{ level }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </label>
+        </div>
+    </section>
+
+    <section class="card">
+        <header class="section-header">
+            <h2>Componentes / avarias</h2>
+            <p>Checklist após a utilização</p>
+        </header>
+        <div class="component-table">
+            {% for comp in componentes %}
+                <div class="component-row" data-status-row>
+                    <div class="component-header">
+                        <div class="component-name">{{ comp.label }}</div>
+                        <select name="component_status_{{ comp.id }}" class="status-select" data-status-select>
+                            <option value="C">C</option>
+                            <option value="NC">NC</option>
+                            <option value="X">X</option>
+                        </select>
+                    </div>
+                    <div class="component-obs" data-status-obs hidden>
+                        <input type="text" name="component_obs_{{ comp.id }}" placeholder="Descreva o motivo">
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary btn-large">Finalizar viagem</button>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

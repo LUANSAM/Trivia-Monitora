@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Entrar · Controle de Rodagem{% endblock %}
+{% block content %}
+<section class="card auth-card">
+    <div class="auth-tabs" role="tablist">
+        <a href="{{ url_for('login') }}" class="auth-tab {{ 'active' if active_tab == 'login' else '' }}" role="tab" aria-selected="{{ 'true' if active_tab == 'login' else 'false' }}">Entrar</a>
+        <a href="{{ url_for('register') }}" class="auth-tab {{ 'active' if active_tab == 'register' else '' }}" role="tab" aria-selected="{{ 'true' if active_tab == 'register' else 'false' }}">Cadastrar</a>
+    </div>
+    <div class="card-header">
+        <h2>Acesse o sistema</h2>
+    </div>
+    <form method="post" class="form-grid simple">
+        <label>
+            <span>E-mail corporativo</span>
+            <input type="email" name="email" placeholder="voce@empresa.com" autocomplete="username" required>
+        </label>
+        <label>
+            <span>Senha</span>
+            <div class="input-with-toggle">
+                <input type="password" name="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" required>
+                <button type="button" class="toggle-password" data-target="loginPassword" aria-label="Mostrar senha">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 11.5A4.5 4.5 0 1 1 12 8a4.5 4.5 0 0 1 0 9zm0-2.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
+                    </svg>
+                </button>
+            </div>
+        </label>
+        <div class="form-actions form-actions--single">
+            <button type="submit" class="btn btn-primary btn-large">Entrar</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

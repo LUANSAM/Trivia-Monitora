@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Avarias{% endblock %}
+{% block content %}
+<section class="card">
+    <header class="section-header">
+        <h2>Histórico de avarias</h2>
+    </header>
+    <style>
+        /* Ajustes de largura para tabela de avarias */
+        .table-wrapper table { width: 100%; table-layout: fixed; }
+        th.id-col, td.id-col { width: 48px; text-align: center; }
+        th.veiculo-col, td.veiculo-col { width: 40%; }
+        th.desc-col, td.desc-col { width: calc(100% - 48px - 40% - 96px); }
+        th.foto-col, td.foto-col { width: 96px; text-align: center; }
+        td.veiculo-col div { white-space: normal; }
+        @media (max-width: 700px) {
+            th.veiculo-col, td.veiculo-col { width: 50%; }
+            th.desc-col, td.desc-col { width: 34%; }
+            th.foto-col, td.foto-col { width: 16%; }
+            th.id-col, td.id-col { width: 36px; }
+        }
+        /* Link de ação com cor verde e sublinhado no hover (consistente com abastecimentos) */
+        a.link-accent { color: var(--primary-color); text-decoration: none; font-weight: 600; }
+        a.link-accent:hover { text-decoration: underline; }
+    </style>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th class="id-col">ID</th>
+                    <th class="veiculo-col">Veículo</th>
+                    <th class="desc-col">Descrição</th>
+                    <th class="foto-col">Foto</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in avarias %}
+                    <tr>
+                        <td class="id-col">{{ item.id }}</td>
+                        <td class="veiculo-col">
+                            <div>{{ item.veiculoID }}</div>
+                            {% if item.userID %}
+                                <div style="font-size: 0.9em; color: #999; margin-top: 0.2rem;">{{ item.userID }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="desc-col">{{ item.descricao }}</td>
+                        <td class="foto-col">
+                            {% if item.foto %}
+                                <a href="{{ item.foto }}" target="_blank" class="link-accent">Ver</a>
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
