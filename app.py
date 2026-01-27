@@ -1564,7 +1564,8 @@ def registrar_abastecimento():
             }
         ).execute()
         flash("Abastecimento registrado!", "success")
-        return redirect(url_for("historico_abastecimentos"))
+        # Redireciona para o dashboard adequado conforme o perfil
+        return redirect(url_for("dashboard"))
 
     return render_template("abastecimentos_form.html", veiculos=veiculos)
 
