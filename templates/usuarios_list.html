@@ -19,7 +19,7 @@
                 <tr>
                     <th>Nome</th>
                     <th class="email-column">E-mail</th>
-                    <th>Posto</th>
+                    <th>Áreas autorizadas</th>
                     <th>Autorizado</th>
                     <th class="created-column">Criado em</th>
                     <th>Ações</th>
@@ -37,7 +37,7 @@
                         <td>{{ usuario.nome }}</td>
                         <td class="email-column">{{ usuario.email }}</td>
                         <td>
-                            <div>{{ usuario.area }}</div>
+                            <div>{{ (usuario.areasAutorizadas or []) | join(', ') if usuario.areasAutorizadas else (usuario.area or '-') }}</div>
                             <div style="font-size: 0.85em; color: #666; margin-top: 2px;">{{ usuario.empresa }}</div>
                         </td>
                         <td>
@@ -48,7 +48,7 @@
                         </td>
                         <td class="created-column">{{ formatted_date }}</td>
                         <td class="actions-cell">
-                            <button class="btn-icon btn-edit" title="Editar usuário" data-user-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}" data-empresa="{{ usuario.empresa }}" data-area="{{ usuario.area }}" data-role="{{ usuario.role }}">
+                            <button class="btn-icon btn-edit" title="Editar usuário" data-user-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}" data-empresa="{{ usuario.empresa }}" data-area="{{ usuario.area }}" data-areas='{{ usuario.areasAutorizadas | tojson | safe }}' data-role="{{ usuario.role }}">
                                 ✏️
                             </button>
                             <button class="btn-icon btn-delete" title="Excluir usuário" data-user-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">
@@ -77,7 +77,8 @@
                 <input type="text" id="editNome" name="nome" required>
             </label>
             
-            {% if current_user and current_user.email == 'luan.sampaio@triviatrens.com.br' %}
+            {% set can_edit_areas = current_user and current_user.email == 'luan.sampaio@triviatrens.com.br' %}
+            {% if can_edit_areas %}
             <label>
                 <span>Empresa</span>
                 <select id="editEmpresa" name="empresa" required>
@@ -89,18 +90,16 @@
             </label>
             
             <label>
-                <span>Área</span>
-                <select id="editArea" name="area" required>
-                    <option value="">Selecione a área...</option>
-                    <option value="Restabelecimento">Restabelecimento</option>
-                    <option value="Energia">Energia</option>
-                    <option value="Sinalização">Sinalização</option>
-                    <option value="Telecom">Telecom</option>
-                    <option value="Engenharia">Engenharia</option>
-                    <option value="Civil/VP">Civil/VP</option>
-                    <option value="Oficinas">Oficinas</option>
-                    <option value="MRO">MRO</option>
-                </select>
+                <span>Áreas autorizadas</span>
+                <div id="editAreasAutorizadas" class="areas-checkboxes">
+                    {% for area in areas %}
+                        <label class="checkbox-row">
+                            <input type="checkbox" value="{{ area.label }}">
+                            <span>{{ area.label }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+                <div class="field-hint">Marque todas as áreas que o usuário poderá acessar.</div>
             </label>
 
             <label>
@@ -109,6 +108,12 @@
                     <option value="user">Usuário</option>
                     <option value="admin">Admin</option>
                 </select>
+            </label>
+            {% endif %}
+            {% if not can_edit_areas %}
+            <label>
+                <span>Áreas autorizadas</span>
+                <div class="readonly-field" id="editAreasReadonly">-</div>
             </label>
             {% endif %}
             
@@ -202,6 +207,35 @@
         table td:nth-child(3) {
             white-space: nowrap !important;
         }
+    }
+    .readonly-field {
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 8px;
+        background: #f7f7f7;
+        min-height: 38px;
+    }
+    .areas-checkboxes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.4rem 0.75rem;
+        margin-top: 0.35rem;
+    }
+    .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.95rem;
+    }
+    .checkbox-row input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--primary, #2563eb);
+    }
+    .field-hint {
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 4px;
     }
 </style>
 <script>
@@ -299,6 +333,12 @@ document.querySelectorAll('.btn-edit').forEach(btn => {
         const nome = btn.dataset.nome;
         const empresa = btn.dataset.empresa;
         const area = btn.dataset.area;
+        let areasList = [];
+        try {
+            areasList = btn.dataset.areas ? JSON.parse(btn.dataset.areas) : [];
+        } catch (err) {
+            areasList = [];
+        }
         const role = btn.dataset.role;
         
         document.getElementById('editUserId').value = userId;
@@ -307,9 +347,17 @@ document.querySelectorAll('.btn-edit').forEach(btn => {
         if (empresaField) {
             empresaField.value = empresa;
         }
-        const areaField = document.getElementById('editArea');
-        if (areaField) {
-            areaField.value = area;
+        const areasContainer = document.getElementById('editAreasAutorizadas');
+        if (areasContainer) {
+            const values = Array.isArray(areasList) ? areasList : [];
+            areasContainer.querySelectorAll('input[type="checkbox"]').forEach(box => {
+                box.checked = values.includes(box.value);
+            });
+        }
+        const areasReadonly = document.getElementById('editAreasReadonly');
+        if (areasReadonly) {
+            const text = areasList && areasList.length ? areasList.join(', ') : (area || '-');
+            areasReadonly.textContent = text;
         }
         const roleField = document.getElementById('editRole');
         if (roleField) {
@@ -327,7 +375,7 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     const userId = document.getElementById('editUserId').value;
     const nome = document.getElementById('editNome').value;
     const empresaField = document.getElementById('editEmpresa');
-    const areaField = document.getElementById('editArea');
+    const areasContainer = document.getElementById('editAreasAutorizadas');
     const roleField = document.getElementById('editRole');
     const role = roleField ? roleField.value : null;
     
@@ -336,8 +384,10 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
         if (empresaField) {
             payload.empresa = empresaField.value;
         }
-        if (areaField) {
-            payload.area = areaField.value;
+        if (areasContainer) {
+            const selectedAreas = Array.from(areasContainer.querySelectorAll('input[type="checkbox"]:checked')).map(box => box.value);
+            payload.areasAutorizadas = selectedAreas;
+            payload.area = selectedAreas[0] || '';
         }
         if (roleField && role) {
             payload.role = role;

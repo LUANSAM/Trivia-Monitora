@@ -188,6 +188,63 @@ VEICULO_MARCAS = [
 FUEL_LEVELS = ["vazio", "1/4", "1/2", "3/4", "cheio"]
 
 
+def _normalize_areas(raw) -> list[str]:
+    """Ensure we always work with a clean list of area strings."""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [str(a).strip() for a in raw if str(a).strip()]
+    if isinstance(raw, str):
+        # Try to parse JSON list, otherwise treat as single value
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [str(a).strip() for a in parsed if str(a).strip()]
+        except Exception:
+            pass
+        cleaned = raw.strip()
+        return [cleaned] if cleaned else []
+    return []
+
+
+def get_authorized_areas(user: dict | None) -> list[str]:
+    user = user or {}
+    areas = user.get("areasAutorizadas") or user.get("areas_autorizadas")
+    normalized = _normalize_areas(areas)
+    if not normalized and user.get("area"):
+        normalized = [user.get("area")]
+    return normalized
+
+
+def get_primary_area(user: dict | None) -> str | None:
+    areas = get_authorized_areas(user)
+    if areas:
+        return areas[0]
+    return (user or {}).get("area")
+
+
+def apply_area_filter(query, user: dict | None, column: str = "area"):
+    areas = get_authorized_areas(user)
+    if areas:
+        try:
+            return query.in_(column, areas)
+        except Exception:
+            # Fallback: if .in_ not available, filter one by one (no-op on error)
+            return query
+    if user and user.get("area"):
+        return query.eq(column, user["area"])
+    return query
+
+
+def user_can_access_area(user: dict | None, area_value: str | None) -> bool:
+    areas = get_authorized_areas(user)
+    if not areas:
+        return True
+    if area_value is None:
+        return False
+    return area_value in areas
+
+
 def require_supabase() -> Client:
     global supabase
     if supabase is None:
@@ -214,7 +271,7 @@ def refresh_session_role() -> None:
         client = require_supabase()
         profile = (
             client.table("usuarios")
-            .select("nome, empresa, role, autorizado")
+            .select("nome, empresa, role, autorizado, area, areasAutorizadas")
             .eq("id", user["id"])
             .single()
             .execute()
@@ -227,7 +284,11 @@ def refresh_session_role() -> None:
             session["user"]["nome"] = data["nome"]
         if data.get("empresa") and data.get("empresa") != user.get("empresa"):
             session["user"]["empresa"] = data.get("empresa")
-        if data.get("area") and data.get("area") != user.get("area"):
+        areas = get_authorized_areas({"areasAutorizadas": data.get("areasAutorizadas"), "area": data.get("area")})
+        session["user"]["areasAutorizadas"] = areas or None
+        if areas:
+            session["user"]["area"] = areas[0]
+        elif data.get("area") and data.get("area") != user.get("area"):
             session["user"]["area"] = data.get("area")
     except Exception:
         # Se não conseguir atualizar, mantém o valor atual em sessão.
@@ -307,7 +368,7 @@ def login():
             user = auth_response.user
             profile = (
                 client.table("usuarios")
-                .select("id, nome, empresa, area, autorizado, role, notificacao")
+                .select("id, nome, empresa, area, areasAutorizadas, autorizado, role, notificacao")
                 .eq("id", user.id)
                 .single()
                 .execute()
@@ -318,12 +379,14 @@ def login():
             return redirect(url_for("login"))
 
         role = profile_data.get("role") or ("admin" if profile_data.get("autorizado") else "user")
+        areas_autorizadas = get_authorized_areas(profile_data)
         session["user"] = {
             "id": user.id,
             "email": user.email,
             "nome": profile_data.get("nome") or (user.email.split("@")[0] if user.email else "Usuário"),
             "empresa": profile_data.get("empresa"),
-            "area": profile_data.get("area"),
+            "area": areas_autorizadas[0] if areas_autorizadas else profile_data.get("area"),
+            "areasAutorizadas": areas_autorizadas or None,
             "role": role,
             "notificacao": profile_data.get("notificacao", False),
         }
@@ -342,6 +405,7 @@ def register():
         nome = request.form.get("nome", "").strip()
         empresa = request.form.get("empresa", "").strip()
         area = request.form.get("area", "").strip()
+        areas_autorizadas = [area] if area else []
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         confirm = request.form.get("password_confirm", "")
@@ -377,6 +441,7 @@ def register():
                     "email": email,
                     "empresa": empresa or None,
                     "area": area or None,
+                    "areasAutorizadas": areas_autorizadas or None,
                     "autorizado": True,
                     "role": "user",
                 }
@@ -392,6 +457,7 @@ def register():
             "nome": nome,
             "empresa": empresa or None,
             "area": area or None,
+            "areasAutorizadas": areas_autorizadas or None,
             "role": "user",
         }
         flash("Cadastro realizado! Bem-vindo.", "success")
@@ -531,11 +597,10 @@ def novo_relatorio():
     user = session.get("user")
     # Filtrar veículos por empresa e area do usuário
     query = client.table("veiculo").select("id, placa, modelo, marca, tipo, combustivel, circulando")
-    
+
     if user.get("empresa"):
         query = query.eq("empresa", user["empresa"])
-    if user.get("area"):
-        query = query.eq("area", user["area"])
+    query = apply_area_filter(query, user)
     
     vehicles = (
         query
@@ -1060,7 +1125,7 @@ def historico_relatorios():
 
         if user.get("empresa") and (vehicle_ref or {}).get("empresa") != user["empresa"]:
             continue
-        if user.get("area") and (vehicle_ref or {}).get("area") != user["area"]:
+        if not user_can_access_area(user, (vehicle_ref or {}).get("area")):
             continue
 
         filtered_data.append(item)
@@ -1225,13 +1290,12 @@ def historico_avarias():
 def lista_usuarios():
     client = require_supabase()
     user = session.get("user") or {}
-    query = client.table("usuarios").select("id, nome, email, empresa, area, autorizado, created_at, role, notificacao")
+    query = client.table("usuarios").select("id, nome, email, empresa, area, areasAutorizadas, autorizado, created_at, role, notificacao")
 
     if user.get("email") != "luan.sampaio@triviatrens.com.br":
         if user.get("empresa"):
             query = query.eq("empresa", user["empresa"])
-        if user.get("area"):
-            query = query.eq("area", user["area"])
+        query = apply_area_filter(query, user)
 
     data = (
         query
@@ -1241,7 +1305,7 @@ def lista_usuarios():
         .data
         or []
     )
-    return render_template("usuarios_list.html", usuarios=data)
+    return render_template("usuarios_list.html", usuarios=data, areas=REGISTER_AREAS)
 
 
 @app.route("/admin/usuarios/<string:user_id>/status", methods=["POST"])
@@ -1303,6 +1367,7 @@ def editar_usuario(user_id: str):
         empresa = payload.get("empresa", "").strip()
         area = payload.get("area", "").strip()
         role = (payload.get("role") or "").strip()
+        areas_autorizadas = payload.get("areasAutorizadas")
         
         if not nome:
             return {"error": "Nome é obrigatório"}, 400
@@ -1310,10 +1375,20 @@ def editar_usuario(user_id: str):
         update_payload = {
             "nome": nome,
             "empresa": empresa,
-            "area": area,
         }
 
+        # Apenas o usuário específico pode editar a lista de áreas autorizadas
         current_user = session.get("user") or {}
+        if current_user.get("email") == "luan.sampaio@triviatrens.com.br":
+            normalized_areas = _normalize_areas(areas_autorizadas)
+            update_payload["areasAutorizadas"] = normalized_areas or None
+            # Mantém coluna area alinhada ao primeiro item para compatibilidade
+            primary_area = normalized_areas[0] if normalized_areas else (area or None)
+            update_payload["area"] = primary_area
+        else:
+            if area:
+                update_payload["area"] = area
+
         if current_user.get("email") == "luan.sampaio@triviatrens.com.br" and role:
             if role not in {"admin", "user"}:
                 return {"error": "Role inválido"}, 400
@@ -1371,7 +1446,7 @@ def gerenciar_veiculos():
         # Obter empresa e area do usuário logado
         user = session.get("user") or {}
         empresa = user.get("empresa")
-        area = user.get("area")
+        area = get_primary_area(user)
         
         inserted = (
             client.table("veiculo")
@@ -1396,11 +1471,10 @@ def gerenciar_veiculos():
     # Filtrar veículos por empresa e area do usuário
     user = session.get("user") or {}
     query = client.table("veiculo").select("id, placa, modelo, marca, tipo, combustivel, empresa, area, created_at")
-    
+
     if user.get("empresa"):
         query = query.eq("empresa", user["empresa"])
-    if user.get("area"):
-        query = query.eq("area", user["area"])
+    query = apply_area_filter(query, user)
     
     veiculos = (
         query
@@ -1599,11 +1673,10 @@ def registrar_avaria():
     
     # Filtrar veículos por empresa e area do usuário
     query = client.table("veiculo").select("id, placa, modelo")
-    
+
     if user.get("empresa"):
         query = query.eq("empresa", user["empresa"])
-    if user.get("area"):
-        query = query.eq("area", user["area"])
+    query = apply_area_filter(query, user)
     
     veiculos = (
         query
@@ -1684,11 +1757,10 @@ def registrar_abastecimento():
     
     # Filtrar veículos por empresa e area do usuário
     query = client.table("veiculo").select("id, placa, modelo")
-    
+
     if user.get("empresa"):
         query = query.eq("empresa", user["empresa"])
-    if user.get("area"):
-        query = query.eq("area", user["area"])
+    query = apply_area_filter(query, user)
     
     veiculos = (
         query
@@ -1737,6 +1809,7 @@ def registrar_abastecimento():
 @login_required()
 def historico_abastecimentos():
     client = require_supabase()
+    user = session.get("user") or {}
     try:
         data = (
             client.table("abastecimentos")
@@ -1764,9 +1837,10 @@ def historico_abastecimentos():
     veiculos_lookup = {}
     usuarios_lookup = {}
     try:
+        veiculo_query = client.table("veiculo").select("id, placa, area")
+        veiculo_query = apply_area_filter(veiculo_query, user)
         veiculos_data = (
-            client.table("veiculo")
-            .select("id, placa")
+            veiculo_query
             .execute()
             .data
             or []
@@ -1782,6 +1856,11 @@ def historico_abastecimentos():
         usuarios_lookup = {item["id"]: item for item in usuarios_data}
     except Exception:
         pass
+
+    # Mantém apenas registros cujos veículos pertencem às áreas autorizadas
+    if veiculos_lookup:
+        allowed_ids = set(veiculos_lookup.keys())
+        data = [item for item in data if (item.get("veiculoID") in allowed_ids)]
 
     for item in data:
         try:
