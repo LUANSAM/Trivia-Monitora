@@ -2,11 +2,77 @@ document.addEventListener('DOMContentLoaded', () => {
     hydrateVehicleFields();
     handleAvariaRepeater();
     markActiveNav();
+    setupSidenav();
+    setupToasts();
     setupPasswordToggles();
     setupChecklistStatus();
     setupFuelSlider();
     setupFormSubmission();
 });
+
+function setupSidenav() {
+    const toggle = document.querySelector('[data-sidenav-toggle]');
+    const sidenav = document.getElementById('appSidenav');
+    const overlay = document.querySelector('[data-sidenav-overlay]');
+    const closeBtn = document.querySelector('[data-sidenav-close]');
+
+    if (!toggle || !sidenav || !overlay) return;
+
+    const open = () => {
+        sidenav.classList.add('is-open');
+        overlay.classList.add('is-visible');
+        toggle.setAttribute('aria-expanded', 'true');
+        sidenav.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('sidenav-open');
+    };
+
+    const close = () => {
+        sidenav.classList.remove('is-open');
+        overlay.classList.remove('is-visible');
+        toggle.setAttribute('aria-expanded', 'false');
+        sidenav.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('sidenav-open');
+    };
+
+    toggle.addEventListener('click', () => {
+        const isOpen = sidenav.classList.contains('is-open');
+        if (isOpen) {
+            close();
+        } else {
+            open();
+        }
+    });
+
+    overlay.addEventListener('click', close);
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', close);
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && sidenav.classList.contains('is-open')) {
+            close();
+        }
+    });
+}
+
+function setupToasts() {
+    const stack = document.querySelector('[data-toast-stack]');
+    if (!stack) return;
+
+    const removeToast = (toast) => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 200);
+    };
+
+    stack.querySelectorAll('.toast').forEach((toast) => {
+        const close = toast.querySelector('.toast-close');
+        if (close) {
+            close.addEventListener('click', () => removeToast(toast));
+        }
+        setTimeout(() => removeToast(toast), 6000);
+    });
+}
 
 function hydrateVehicleFields() {
     const select = document.getElementById('veiculoSelect');

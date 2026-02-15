@@ -16,12 +16,14 @@ from flask import (
     url_for,
     send_from_directory,
 )
-from supabase import Client, create_client
+from supabase import create_client, Client
 from werkzeug.utils import secure_filename
 import certifi
 import re
 
-load_dotenv()
+DOTENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
+# Garante que o .env local sobrescreva variaveis ja definidas no ambiente.
+load_dotenv(dotenv_path=DOTENV_PATH, override=True)
 
 try:
     CERT_PATH = certifi.where()
@@ -30,8 +32,8 @@ try:
 except Exception:
     pass
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://uykchglnflbidcxxgfcq.supabase.co")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5a2NoZ2xuZmxiaWRjeHhnZmNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyMDM0NjQsImV4cCI6MjA4NDc3OTQ2NH0.d1gQsjFgOjWuUUAtL-24inCo9uPhuz8sV-Ny2cWAcgo")
+SUPABASE_URL = os.getenv("SUPABASE_URL","https://roawjxyftfntldpdqlee.supabase.co")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvYXdqeHlmdGZudGxkcGRxbGVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAzOTI5OTcsImV4cCI6MjA3NTk2ODk5N30.vPNSc4n4wG9V-nxqtPEMiwI88K0ExdQillcCTnv2WyI")
 SUPABASE_SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE")
 
 app = Flask(__name__)
@@ -185,6 +187,165 @@ VEICULO_MARCAS = [
 ]
 
 FUEL_LEVELS = ["vazio", "1/4", "1/2", "3/4", "cheio"]
+
+
+def build_user_profile_payload(
+    user_id: str,
+    nome: str,
+    email: str,
+    empresa: str,
+    area: str,
+    areas_autorizadas: list[str] | None = None,
+) -> dict:
+    """Montar os campos exigidos pela tabela usuarios após o cadastro."""
+    timestamp_now = datetime.now(timezone.utc).isoformat()
+    areas_payload = areas_autorizadas or ([area] if area else None)
+    return {
+        "id": user_id,
+        "nome": nome,
+        "email": email,
+        "empresa": empresa or None,
+        "area": area or None,
+        "areasAutorizadas": areas_payload,
+        "autorizado": True,
+        "role": "Usuário",
+        "ultimoAcesso": timestamp_now,
+    }
+
+
+def _safe_float(value) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_level_percentage(value) -> float | None:
+    raw = _safe_float(value)
+    if raw is None:
+        return None
+    if 0 <= raw <= 1:
+        raw *= 100
+    return max(min(raw, 100.0), 0.0)
+
+
+def _classify_level_status(percent: float | None) -> str:
+    if percent is None:
+        return "unknown"
+    if percent >= 70:
+        return "safe"
+    if percent >= 40:
+        return "moderate"
+    if percent >= 20:
+        return "alert"
+    return "critical"
+
+
+def _parse_datetime(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        dt_value = value
+    else:
+        text = value
+        if isinstance(text, str) and text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            dt_value = datetime.fromisoformat(text)
+        except Exception:
+            return None
+    if dt_value.tzinfo is None:
+        dt_value = dt_value.replace(tzinfo=timezone.utc)
+    return dt_value
+
+
+def _format_datetime_display(dt_value):
+    if not dt_value:
+        return None
+    return dt_value.astimezone(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+
+
+def _should_display_level(raw) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"true", "1", "t", "y", "yes"}
+    if isinstance(raw, (int, float)):
+        return raw == 1 or raw is True
+    return False
+
+
+def _coerce_mapping(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            return {}
+    return {}
+
+
+def fetch_generator_levels() -> list[dict]:
+    try:
+        client = require_supabase()
+    except RuntimeError as exc:
+        print(f"[WARN] Supabase indisponível para carregar níveis: {exc}")
+        return []
+
+    try:
+        response = (
+            client.table("equipamentos")
+            .select("id, nome, tipo, exibeNivel, nivelAtual, ultimaAtualizacao, dados, estacao")
+            .eq("tipo", "Gerador")
+            .order("nome", desc=False)
+            .execute()
+        )
+        rows = response.data or []
+    except Exception as exc:
+        print(f"[WARN] Erro ao consultar níveis de combustível: {exc}")
+        return []
+
+    levels: list[dict] = []
+    for row in rows:
+        if not _should_display_level(row.get("exibeNivel")):
+            continue
+
+        data = _coerce_mapping(row.get("dados"))
+        estacao_meta = _coerce_mapping(row.get("estacao"))
+
+        level_raw = _safe_float(row.get("nivelAtual"))
+        level_percent = _normalize_level_percentage(level_raw)
+        autonomia_base = _safe_float(data.get("autonomia"))
+        autonomia_total = None
+        if autonomia_base is not None and level_raw is not None:
+            autonomia_total = round(level_raw * autonomia_base, 1)
+
+        ultima_dt = _parse_datetime(row.get("ultimaAtualizacao"))
+        location = estacao_meta.get("estacao") or (row.get("estacao") if isinstance(row.get("estacao"), str) else None)
+
+        levels.append(
+            {
+                "id": row.get("id"),
+                "nome": row.get("nome") or "Gerador",
+                "nivel_percent": level_percent,
+                "nivel_display": f"{level_percent:.0f}%" if level_percent is not None else "—",
+                "nivel_status": _classify_level_status(level_percent),
+                "autonomia_value": autonomia_total,
+                "autonomia_display": f"{autonomia_total:.1f} h" if autonomia_total is not None else None,
+                "volume_tanque": data.get("tanque"),
+                "local": location or "Local não informado",
+                "ultima_atualizacao_dt": ultima_dt,
+                "ultima_atualizacao_display": _format_datetime_display(ultima_dt) or row.get("ultimaAtualizacao"),
+                "ultima_atualizacao_iso": ultima_dt.isoformat() if ultima_dt else row.get("ultimaAtualizacao"),
+            }
+        )
+
+    return levels
 
 
 def _normalize_areas(raw) -> list[str]:
@@ -344,15 +505,28 @@ def serve_public_asset(filename: str):
 
 @app.route("/")
 def home():
-    if session.get("user"):
-        return redirect(url_for("dashboard"))
-    return redirect(url_for("login"))
+    fuel_levels = fetch_generator_levels()
+    latest_dt = None
+    for item in fuel_levels:
+        dt_value = item.get("ultima_atualizacao_dt")
+        if not dt_value:
+            continue
+        if latest_dt is None or dt_value > latest_dt:
+            latest_dt = dt_value
+    last_refresh = _format_datetime_display(latest_dt)
+
+    return render_template(
+        "fuel_levels.html",
+        fuel_levels=fuel_levels,
+        last_refresh=last_refresh,
+        active_tab="home",
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("user"):
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("home"))
 
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
@@ -390,7 +564,7 @@ def login():
             "notificacao": profile_data.get("notificacao", False),
         }
         flash("Bem-vindo!", "success")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("home"))
 
     return render_template("login.html", active_tab="login")
 
@@ -398,24 +572,35 @@ def login():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if session.get("user"):
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("home"))
 
     if request.method == "POST":
         nome = request.form.get("nome", "").strip()
         empresa = request.form.get("empresa", "").strip()
         area = request.form.get("area", "").strip()
-        areas_autorizadas = [area] if area else []
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         confirm = request.form.get("password_confirm", "")
 
-        if not nome or not email or not password:
-            flash("Informe nome, e-mail e senha.", "error")
+        required_fields = [
+            (nome, "nome completo"),
+            (email, "e-mail"),
+            (empresa, "empresa"),
+            (area, "área"),
+            (password, "senha"),
+            (confirm, "confirmação da senha"),
+        ]
+        missing_labels = [label for value, label in required_fields if not value]
+        if missing_labels:
+            campos = ", ".join(missing_labels)
+            flash(f"Preencha todos os campos do cadastro: {campos}.", "error")
             return redirect(url_for("register"))
 
         if password != confirm:
             flash("As senhas não conferem.", "error")
             return redirect(url_for("register"))
+
+        areas_autorizadas = [area] if area else []
 
         client = require_supabase()
         try:
@@ -433,18 +618,15 @@ def register():
                     # Se falhar, seguimos, mas o usuário pode precisar confirmar por e-mail.
                     pass
 
-            client.table("usuarios").upsert(
-                {
-                    "id": user.id,
-                    "nome": nome,
-                    "email": email,
-                    "empresa": empresa or None,
-                    "area": area or None,
-                    "areasAutorizadas": areas_autorizadas or None,
-                    "autorizado": True,
-                    "role": "user",
-                }
-            ).execute()
+            profile_payload = build_user_profile_payload(
+                user_id=user.id,
+                nome=nome,
+                email=email,
+                empresa=empresa,
+                area=area,
+                areas_autorizadas=areas_autorizadas,
+            )
+            client.table("usuarios").upsert(profile_payload).execute()
         except Exception as exc:  # pragma: no cover - depende do backend
             flash(f"Erro ao cadastrar: {exc}", "error")
             return redirect(url_for("register"))
@@ -457,10 +639,10 @@ def register():
             "empresa": empresa or None,
             "area": area or None,
             "areasAutorizadas": areas_autorizadas or None,
-            "role": "user",
+            "role": "Usuário",
         }
         flash("Cadastro realizado! Bem-vindo.", "success")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("home"))
 
     return render_template(
         "register.html",
@@ -1897,7 +2079,7 @@ def server_error(error):
 if __name__ == "__main__":
     debug_mode = os.getenv("FLASK_DEBUG", "0") == "1"
     print("=" * 60)
-    print("TRIVIA KM - TRIVIA TRENS")
+    print("TRIVIA MONITORA - TRIVIA TRENS")
     print("=" * 60)
     print("\n[OK] Servidor iniciado")
     print(f"[OK] Porta: {int(os.getenv('PORT', '5000'))}")

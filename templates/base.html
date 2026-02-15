@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Trivia Km{% endblock %}</title>
+    <title>{% block title %}Trivia Monitora{% endblock %}</title>
     
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
@@ -18,15 +18,36 @@
 <body>
     <div class="app-shell">
         <header class="app-header">
-            <a class="header-link" href="{{ url_for('dashboard') if session.get('user') else url_for('home') }}">
+            <button class="menu-toggle" type="button" data-sidenav-toggle aria-label="Abrir menu" aria-controls="appSidenav" aria-expanded="false">
+                <span class="menu-toggle-bar"></span>
+                <span class="menu-toggle-bar"></span>
+                <span class="menu-toggle-bar"></span>
+            </button>
+            <a class="header-link" href="{{ url_for('home') }}">
                 <div class="header-brand">
-                    <h1>Trivia Km</h1>
+                    <h1>Trivia Monitora</h1>
                 </div>
                 <div class="header-logo">
                     <img src="{{ url_for('serve_public_asset', filename='logo.png') }}" alt="Logo Trivia" loading="lazy">
                 </div>
             </a>
         </header>
+
+        <div class="sidenav-overlay" data-sidenav-overlay></div>
+        <aside id="appSidenav" class="sidenav" aria-hidden="true">
+            <div class="sidenav-header">
+                <span class="sidenav-title">Menu</span>
+                <button class="sidenav-close" type="button" data-sidenav-close aria-label="Fechar menu">x</button>
+            </div>
+            <div class="sidenav-content"></div>
+            <div class="sidenav-footer">
+                {% if session.get('user') %}
+                    <a class="btn btn-danger sidenav-auth-btn" href="{{ url_for('logout') }}">Sair</a>
+                {% else %}
+                    <a class="btn btn-primary sidenav-auth-btn" href="{{ url_for('login') }}">Entrar/Cadastrar</a>
+                {% endif %}
+            </div>
+        </aside>
 
         
 
