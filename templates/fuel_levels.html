@@ -20,49 +20,53 @@
     {% if fuel_levels %}
         <div class="fuel-grid">
             {% for equipamento in fuel_levels %}
-                <article class="fuel-card fuel-card--{{ equipamento.nivel_status }}">
+                <article class="fuel-card fuel-card--{{ equipamento.nivel_status }}{% if equipamento.is_critical_focus %} fuel-card--low{% endif %}">
                     <header class="fuel-card__header">
                         <div>
                             <p class="eyebrow">{{ equipamento.local }}</p>
                             <h3>{{ equipamento.nome }}</h3>
                         </div>
-                        <span class="fuel-card__level-text">{{ equipamento.nivel_display }}</span>
+                        <div class="fuel-card__meta">
+                            <span class="fuel-card__level-text">{{ equipamento.nivel_display }}</span>
+                            {% if equipamento.is_critical_focus %}
+                                <span class="fuel-card__badge">Abaixo de 25%</span>
+                            {% endif %}
+                        </div>
                     </header>
 
-                    <div class="fuel-meter" role="img" aria-label="Nível atual de {{ equipamento.nivel_display }} para {{ equipamento.nome }}">
-                        <div class="fuel-meter__track"></div>
-                        <div class="fuel-meter__fill" style="--fuel-level: {{ equipamento.nivel_percent or 0 }}%;"></div>
-                        <div class="fuel-meter__glow"></div>
-                    </div>
+                    <div class="fuel-card__body">
+                        <div class="fuel-gauge" style="--fuel-level: {{ equipamento.nivel_percent or 0 }}; --fuel-color: {{ equipamento.level_color }};" role="img" aria-label="Nível atual de {{ equipamento.nivel_display }} para {{ equipamento.nome }}">
+                            <div class="fuel-gauge__ring">
+                                <span class="fuel-gauge__value">{{ equipamento.nivel_display }}</span>
+                                <span class="fuel-gauge__label">nível</span>
+                            </div>
+                        </div>
 
-                    <dl class="fuel-card__stats">
-                        <div>
-                            <dt>Nível</dt>
-                            <dd>{{ equipamento.nivel_display }}</dd>
-                        </div>
-                        <div>
-                            <dt>Autonomia estimada</dt>
-                            <dd>{{ equipamento.autonomia_display or '—' }}</dd>
-                        </div>
-                        <div>
-                            <dt>Volume do tanque</dt>
-                            <dd>{{ equipamento.volume_tanque or '—' }}</dd>
-                        </div>
-                        <div>
-                            <dt>Local</dt>
-                            <dd>{{ equipamento.local }}</dd>
-                        </div>
-                        <div>
-                            <dt>Última atualização</dt>
-                            <dd>
-                                {% if equipamento.ultima_atualizacao_display %}
-                                    <time datetime="{{ equipamento.ultima_atualizacao_iso }}">{{ equipamento.ultima_atualizacao_display }}</time>
-                                {% else %}
-                                    —
-                                {% endif %}
-                            </dd>
-                        </div>
-                    </dl>
+                        <dl class="fuel-card__details">
+                            <div>
+                                <dt>Autonomia estimada</dt>
+                                <dd>{{ equipamento.autonomia_display or '—' }}</dd>
+                            </div>
+                            <div>
+                                <dt>Volume do tanque</dt>
+                                <dd>{{ equipamento.volume_tanque or '—' }}</dd>
+                            </div>
+                            <div>
+                                <dt>Última atualização</dt>
+                                <dd>
+                                    {% if equipamento.ultima_atualizacao_display %}
+                                        <time datetime="{{ equipamento.ultima_atualizacao_iso }}">{{ equipamento.ultima_atualizacao_display }}</time>
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>Local</dt>
+                                <dd>{{ equipamento.local }}</dd>
+                            </div>
+                        </dl>
+                    </div>
                 </article>
             {% endfor %}
         </div>

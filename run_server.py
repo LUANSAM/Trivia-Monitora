@@ -16,6 +16,10 @@ print("Importando app...", flush=True)
 try:
     import app as main_app
     print("App importado com sucesso!", flush=True)
+    try:
+        print(f"app.py usado: {main_app.__file__}", flush=True)
+    except Exception:
+        pass
     print(f"Supabase client: {main_app.supabase}", flush=True)
 except Exception as e:
     print(f"ERRO ao importar app: {e}", flush=True)

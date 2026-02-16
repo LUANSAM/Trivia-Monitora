@@ -2,6 +2,7 @@ import json
 import os
 import secrets
 import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime, timezone
 from functools import wraps
 
@@ -35,6 +36,7 @@ except Exception:
 SUPABASE_URL = os.getenv("SUPABASE_URL","https://roawjxyftfntldpdqlee.supabase.co")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvYXdqeHlmdGZudGxkcGRxbGVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAzOTI5OTcsImV4cCI6MjA3NTk2ODk5N30.vPNSc4n4wG9V-nxqtPEMiwI88K0ExdQillcCTnv2WyI")
 SUPABASE_SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE")
+SUPABASE_FORCE_MOCK = os.getenv("SUPABASE_FORCE_MOCK", "0") == "1"
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
@@ -70,11 +72,12 @@ supabase_service: Client | None = None
 #         supabase = None
 #         print(f"[WARN] Supabase client init failed: {exc}")
 
-if SUPABASE_URL and SUPABASE_SERVICE_ROLE:
-    try:
-        supabase_service = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
-    except Exception:
-        supabase_service = None
+# Comentado: service role lazy loading também
+# if SUPABASE_URL and SUPABASE_SERVICE_ROLE:
+#     try:
+#         supabase_service = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
+#     except Exception:
+#         supabase_service = None
 
 COMPONENTES = [
     {"id": "bancos", "label": "Bancos"},
@@ -188,6 +191,14 @@ VEICULO_MARCAS = [
 
 FUEL_LEVELS = ["vazio", "1/4", "1/2", "3/4", "cheio"]
 
+LEVEL_STATUS_COLORS = {
+    "safe": "#1ec592",
+    "moderate": "#f6c343",
+    "alert": "#ff8a3c",
+    "critical": "#ff3355",
+    "unknown": "#95a1b3",
+}
+
 
 def build_user_profile_payload(
     user_id: str,
@@ -291,13 +302,24 @@ def _coerce_mapping(value) -> dict:
 
 
 def fetch_generator_levels() -> list[dict]:
+    print("[DEBUG] Iniciando carga de níveis de combustível", flush=True)
+    
+    # Se não houver arquivo .env ou se o flag de mock estiver ativo, usa dados mockados
+    if not os.path.exists(DOTENV_PATH) or SUPABASE_FORCE_MOCK:
+        print("[INFO] Ambiente sem .env ou SUPABASE_FORCE_MOCK=1, usando dados mockados", flush=True)
+        return _get_mock_fuel_data()
+    
     try:
+        print("[DEBUG] Tentando obter cliente Supabase...", flush=True)
         client = require_supabase()
+        print("[DEBUG] Supabase client obtido com sucesso", flush=True)
     except RuntimeError as exc:
-        print(f"[WARN] Supabase indisponível para carregar níveis: {exc}")
-        return []
+        print(f"[WARN] Supabase indisponível, usando dados mockados: {exc}", flush=True)
+        # Fallback: retornar dados mockados quando Supabase não estiver disponível
+        return _get_mock_fuel_data()
 
-    try:
+    def _load_levels() -> list[dict]:
+        print("[DEBUG] Consultando tabela equipamentos...", flush=True)
         response = (
             client.table("equipamentos")
             .select("id, nome, tipo, exibeNivel, nivelAtual, ultimaAtualizacao, dados, estacao")
@@ -306,27 +328,43 @@ def fetch_generator_levels() -> list[dict]:
             .execute()
         )
         rows = response.data or []
+        print(f"[DEBUG] Query retornou {len(rows)} equipamentos", flush=True)
+        return rows
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_load_levels)
+            rows = future.result(timeout=6)
+    except FuturesTimeout:
+        print("[WARN] Query de níveis excedeu 6s, usando dados mockados", flush=True)
+        return _get_mock_fuel_data()
     except Exception as exc:
-        print(f"[WARN] Erro ao consultar níveis de combustível: {exc}")
-        return []
+        print(f"[WARN] Erro ao consultar níveis de combustível, usando dados mockados: {exc}", flush=True)
+        return _get_mock_fuel_data()
 
     levels: list[dict] = []
     for row in rows:
         if not _should_display_level(row.get("exibeNivel")):
             continue
 
+        print(f"[DEBUG] Processando equipamento {row.get('id')} - exibeNivel ok", flush=True)
+
         data = _coerce_mapping(row.get("dados"))
         estacao_meta = _coerce_mapping(row.get("estacao"))
 
         level_raw = _safe_float(row.get("nivelAtual"))
         level_percent = _normalize_level_percentage(level_raw)
+        level_status = _classify_level_status(level_percent)
+        level_ratio = (level_percent / 100.0) if level_percent is not None else None
+
         autonomia_base = _safe_float(data.get("autonomia"))
         autonomia_total = None
-        if autonomia_base is not None and level_raw is not None:
-            autonomia_total = round(level_raw * autonomia_base, 1)
+        if autonomia_base is not None and level_ratio is not None:
+            autonomia_total = round(level_ratio * autonomia_base, 1)
 
         ultima_dt = _parse_datetime(row.get("ultimaAtualizacao"))
         location = estacao_meta.get("estacao") or (row.get("estacao") if isinstance(row.get("estacao"), str) else None)
+        is_critical_focus = level_percent is not None and level_percent < 25
 
         levels.append(
             {
@@ -334,7 +372,9 @@ def fetch_generator_levels() -> list[dict]:
                 "nome": row.get("nome") or "Gerador",
                 "nivel_percent": level_percent,
                 "nivel_display": f"{level_percent:.0f}%" if level_percent is not None else "—",
-                "nivel_status": _classify_level_status(level_percent),
+                "nivel_status": level_status,
+                "level_color": LEVEL_STATUS_COLORS.get(level_status, LEVEL_STATUS_COLORS["unknown"]),
+                "is_critical_focus": is_critical_focus,
                 "autonomia_value": autonomia_total,
                 "autonomia_display": f"{autonomia_total:.1f} h" if autonomia_total is not None else None,
                 "volume_tanque": data.get("tanque"),
@@ -345,7 +385,78 @@ def fetch_generator_levels() -> list[dict]:
             }
         )
 
+    print(f"[DEBUG] Total de {len(levels)} geradores processados para exibição", flush=True)
     return levels
+
+
+def _get_mock_fuel_data() -> list[dict]:
+    """Retorna dados mockados para teste quando Supabase não está disponível"""
+    return [
+        {
+            "id": 1,
+            "nome": "Gerador Principal - Sede (MOCK)",
+            "nivel_percent": 85.5,
+            "nivel_display": "86%",
+            "nivel_status": "safe",
+            "level_color": LEVEL_STATUS_COLORS["safe"],
+            "is_critical_focus": False,
+            "autonomia_value": 34.2,
+            "autonomia_display": "34.2 h",
+            "volume_tanque": "500L",
+            "local": "Estação Central - Sala Técnica",
+            "ultima_atualizacao_display": "15/02/2026 19:50",
+            "ultima_atualizacao_iso": "2026-02-15T19:50:00",
+            "ultima_atualizacao_dt": None
+        },
+        {
+            "id": 2,
+            "nome": "Gerador Backup - Norte (MOCK)",
+            "nivel_percent": 45.2,
+            "nivel_display": "45%",
+            "nivel_status": "moderate",
+            "level_color": LEVEL_STATUS_COLORS["moderate"],
+            "is_critical_focus": False,
+            "autonomia_value": 18.1,
+            "autonomia_display": "18.1 h",
+            "volume_tanque": "300L",
+            "local": "Terminal Norte",
+            "ultima_atualizacao_display": "15/02/2026 19:45",
+            "ultima_atualizacao_iso": "2026-02-15T19:45:00",
+            "ultima_atualizacao_dt": None
+        },
+        {
+            "id": 3,
+            "nome": "Gerador Emergência - Sul (MOCK)",
+            "nivel_percent": 22.8,
+            "nivel_display": "23%",
+            "nivel_status": "alert",
+            "level_color": LEVEL_STATUS_COLORS["alert"],
+            "is_critical_focus": True,
+            "autonomia_value": 9.1,
+            "autonomia_display": "9.1 h",
+            "volume_tanque": "400L",
+            "local": "Terminal Sul - Subsolo",
+            "ultima_atualizacao_display": "15/02/2026 19:40",
+            "ultima_atualizacao_iso": "2026-02-15T19:40:00",
+            "ultima_atualizacao_dt": None
+        },
+        {
+            "id": 4,
+            "nome": "Gerador Crítico - Leste (MOCK)",
+            "nivel_percent": 8.5,
+            "nivel_display": "9%",
+            "nivel_status": "critical",
+            "level_color": LEVEL_STATUS_COLORS["critical"],
+            "is_critical_focus": True,
+            "autonomia_value": 3.4,
+            "autonomia_display": "3.4 h",
+            "volume_tanque": "250L",
+            "local": "Estação Leste",
+            "ultima_atualizacao_display": "15/02/2026 19:35",
+            "ultima_atualizacao_iso": "2026-02-15T19:35:00",
+            "ultima_atualizacao_dt": None
+        }
+    ]
 
 
 def _normalize_areas(raw) -> list[str]:
@@ -411,8 +522,11 @@ def require_supabase() -> Client:
         # Tenta criar o cliente na primeira chamada usando as variáveis de ambiente.
         if SUPABASE_URL and SUPABASE_ANON_KEY:
             try:
+                print(f"[DEBUG] Iniciando create_client com URL: {SUPABASE_URL[:30]}...", flush=True)
                 supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+                print(f"[DEBUG] create_client concluído com sucesso", flush=True)
             except Exception as exc:
+                print(f"[ERROR] create_client falhou: {exc}", flush=True)
                 raise RuntimeError(
                     "Supabase client not configured. Falha ao inicializar o cliente Supabase: %s" % exc
                 ) from exc
@@ -421,6 +535,20 @@ def require_supabase() -> Client:
                 "Supabase client not configured. Defina SUPABASE_ANON_KEY em um .env ou variável de ambiente."
             )
     return supabase
+
+
+def get_supabase_service() -> Client | None:
+    """Retorna cliente Supabase com service role (opcional) para operações administrativas"""
+    global supabase_service
+    if supabase_service is None and SUPABASE_URL and SUPABASE_SERVICE_ROLE:
+        try:
+            print(f"[DEBUG] Iniciando create_client para service role...", flush=True)
+            supabase_service = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
+            print(f"[DEBUG] Service role client criado com sucesso", flush=True)
+        except Exception as exc:
+            print(f"[WARN] Não foi possível criar service role client: {exc}", flush=True)
+            supabase_service = None
+    return supabase_service
 
 
 def refresh_session_role() -> None:
@@ -480,6 +608,15 @@ def inject_user():
     return {"current_user": session.get("user")}
 
 
+@app.before_request
+def log_request():
+    user = session.get("user") or {}
+    print(
+        f"[DEBUG] BEFORE REQUEST path={request.path} endpoint={request.endpoint} user_id={user.get('id')} role={user.get('role')}",
+        flush=True,
+    )
+
+
 # Evita que formulários fiquem em cache e reabram ao voltar no navegador
 @app.after_request
 def add_no_cache_headers(response):
@@ -490,6 +627,7 @@ def add_no_cache_headers(response):
         "registrar_avaria",
         "register",
         "login",
+        "home",
     }
     if request.endpoint in no_cache_endpoints:
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -505,7 +643,9 @@ def serve_public_asset(filename: str):
 
 @app.route("/")
 def home():
+    print("[DEBUG] Acessando rota /home (fuel levels)", flush=True)
     fuel_levels = fetch_generator_levels()
+    print(f"[DEBUG] Carregados {len(fuel_levels)} geradores", flush=True)
     latest_dt = None
     for item in fuel_levels:
         dt_value = item.get("ultima_atualizacao_dt")
@@ -514,6 +654,7 @@ def home():
         if latest_dt is None or dt_value > latest_dt:
             latest_dt = dt_value
     last_refresh = _format_datetime_display(latest_dt)
+    print(f"[DEBUG] Última atualização calculada: {last_refresh}", flush=True)
 
     return render_template(
         "fuel_levels.html",
@@ -529,6 +670,7 @@ def login():
         return redirect(url_for("home"))
 
     if request.method == "POST":
+        print("[DEBUG] POST /login iniciado", flush=True)
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         if not email or not password:
@@ -539,6 +681,7 @@ def login():
         try:
             auth_response = client.auth.sign_in_with_password({"email": email, "password": password})
             user = auth_response.user
+            print(f"[DEBUG] Login Supabase ok para {email}", flush=True)
             profile = (
                 client.table("usuarios")
                 .select("id, nome, empresa, area, areasAutorizadas, autorizado, role, notificacao")
@@ -563,6 +706,7 @@ def login():
             "role": role,
             "notificacao": profile_data.get("notificacao", False),
         }
+        print(f"[DEBUG] Login concluído para {user.email}, redirecionando para home", flush=True)
         flash("Bem-vindo!", "success")
         return redirect(url_for("home"))
 
@@ -575,6 +719,7 @@ def register():
         return redirect(url_for("home"))
 
     if request.method == "POST":
+        print("[DEBUG] POST /register iniciado", flush=True)
         nome = request.form.get("nome", "").strip()
         empresa = request.form.get("empresa", "").strip()
         area = request.form.get("area", "").strip()
@@ -604,6 +749,7 @@ def register():
 
         client = require_supabase()
         try:
+            print(f"[DEBUG] Chamando supabase.sign_up para {email}", flush=True)
             signup_response = client.auth.sign_up({"email": email, "password": password})
             user = signup_response.user
             if not user:
@@ -611,9 +757,10 @@ def register():
                 return redirect(url_for("register"))
 
             # Se houver service role, confirma o e-mail automaticamente para evitar o erro "email not confirmed".
-            if supabase_service:
+            service_client = get_supabase_service()
+            if service_client:
                 try:
-                    supabase_service.auth.admin.update_user_by_id(user.id, {"email_confirm": True})
+                    service_client.auth.admin.update_user_by_id(user.id, {"email_confirm": True})
                 except Exception:
                     # Se falhar, seguimos, mas o usuário pode precisar confirmar por e-mail.
                     pass
@@ -626,6 +773,7 @@ def register():
                 area=area,
                 areas_autorizadas=areas_autorizadas,
             )
+            print(f"[DEBUG] Gravando perfil na tabela usuarios para {email}", flush=True)
             client.table("usuarios").upsert(profile_payload).execute()
         except Exception as exc:  # pragma: no cover - depende do backend
             flash(f"Erro ao cadastrar: {exc}", "error")
@@ -641,6 +789,7 @@ def register():
             "areasAutorizadas": areas_autorizadas or None,
             "role": "Usuário",
         }
+        print(f"[DEBUG] Cadastro concluído para {email}, redirecionando para home", flush=True)
         flash("Cadastro realizado! Bem-vindo.", "success")
         return redirect(url_for("home"))
 
@@ -1591,9 +1740,10 @@ def deletar_usuario(user_id: str):
         client.table("usuarios").delete().eq("id", user_id).execute()
         
         # Deleta a conta do usuário do Supabase Auth (opcional, pode causar erro se não existir)
-        if supabase_service:
+        service_client = get_supabase_service()
+        if service_client:
             try:
-                supabase_service.auth.admin.delete_user(user_id)
+                service_client.auth.admin.delete_user(user_id)
             except Exception:
                 pass  # Se falhar, continua de qualquer forma
         

@@ -1362,66 +1362,129 @@ table td:nth-child(7) {
     font-weight: 700;
     color: var(--fuel-color-start);
 }
-
-.fuel-meter {
-    position: relative;
-    height: 64px;
-    border-radius: 999px;
-    overflow: hidden;
-    margin-bottom: 1.25rem;
+.fuel-card__meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
 }
 
-.fuel-meter__track {
-    position: absolute;
-    inset: 0;
-    background: rgba(10, 30, 43, 0.08);
-    border-radius: inherit;
-}
-
-.fuel-meter__fill {
-    position: absolute;
-    inset: 0;
-    width: var(--fuel-level, 0%);
-    border-radius: inherit;
-    background: linear-gradient(90deg, var(--fuel-color-start), var(--fuel-color-end));
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.2);
-    transition: width 0.4s ease;
-}
-
-.fuel-meter__glow {
-    position: absolute;
-    inset: 6px;
-    border-radius: inherit;
-    background: rgba(255, 255, 255, 0.08);
-    pointer-events: none;
-}
-
-.fuel-card__stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 0.85rem 1.25rem;
-    margin: 0;
-}
-
-.fuel-card__stats div {
-    background: rgba(12, 28, 42, 0.03);
-    border-radius: 0.85rem;
-    padding: 0.75rem 0.85rem;
-}
-
-.fuel-card__stats dt {
-    font-size: 0.8rem;
+.fuel-card__badge {
+    font-size: 0.75rem;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #7a8492;
-    margin-bottom: 0.15rem;
+    letter-spacing: 0.18em;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(255, 51, 101, 0.15);
+    color: #ff3355;
 }
 
-.fuel-card__stats dd {
+.fuel-card__body {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.fuel-gauge {
+    position: relative;
+    width: 145px;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fuel-gauge::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(var(--fuel-color, #1ec592) calc(var(--fuel-level, 0) * 1%), rgba(15, 35, 51, 0.1) 0);
+}
+
+.fuel-gauge::after {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: inset 0 12px 25px rgba(12, 28, 42, 0.08);
+}
+
+.fuel-gauge__ring {
+    position: relative;
+    z-index: 1;
+    width: 70%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1rem;
+}
+
+.fuel-gauge__value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #0c1c2a;
+}
+
+.fuel-gauge__label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: #7a8492;
+}
+
+.fuel-card__details {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
     margin: 0;
-    font-size: 1.05rem;
+}
+
+.fuel-card__details div {
+    background: rgba(12, 28, 42, 0.04);
+    border-radius: 1rem;
+    padding: 0.85rem 1rem;
+}
+
+.fuel-card__details dt {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #7a8492;
+    margin-bottom: 0.25rem;
+}
+
+.fuel-card__details dd {
+    margin: 0;
+    font-size: 1.1rem;
     font-weight: 600;
     color: #0c1c2a;
+}
+
+.fuel-card--low {
+    box-shadow: 0 20px 35px rgba(255, 51, 85, 0.15), inset 0 0 0 1px rgba(255, 51, 85, 0.25);
+}
+
+.fuel-card--low .fuel-gauge::before {
+    animation: pulse-glow 1.8s ease-in-out infinite;
+    box-shadow: 0 0 25px rgba(255, 51, 85, 0.35);
+}
+
+@keyframes pulse-glow {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.9;
+    }
+    50% {
+        transform: scale(1.02);
+        opacity: 1;
+    }
 }
 
 .fuel-overview .eyebrow {
@@ -1456,5 +1519,14 @@ table td:nth-child(7) {
     .fuel-overview__meta {
         text-align: left;
         min-width: auto;
+    }
+
+    .fuel-card__body {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .fuel-gauge {
+        width: 120px;
     }
 }
