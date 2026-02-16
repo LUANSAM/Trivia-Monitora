@@ -1297,16 +1297,17 @@ table td:nth-child(7) {
 
 .fuel-grid {
     display: grid;
-    /* try to fit as many 390px cards as possible, but allow them to shrink down to 260px on small screens */
-    grid-template-columns: repeat(auto-fit, minmax(260px, 390px));
+    /* allow columns to expand and share available space while enforcing a minimum and maximum width */
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 1.5rem;
-    justify-content: center; /* keep the grid centered */
     max-width: 100%;
 }
 
 .fuel-grid > * {
-    width: 390px; /* fixed card width */
-    max-width: 100%;
+    /* each card can grow to fill its grid cell but not exceed 390px */
+    max-width: 390px;
+    width: 100%;
+    margin: 0 auto; /* keep cards centered within their grid cell */
 }
 
 .fuel-card {
