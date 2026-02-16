@@ -183,6 +183,20 @@ body.sidenav-open {
     padding: 20px;
 }
 
+/* Logo inside sidenav header */
+.sidenav-brand {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.sidenav-brand img {
+    max-width: calc(100% - 40px);
+    height: 48px;
+    width: auto;
+    object-fit: contain;
+}
+
 .sidenav-footer {
     padding: 20px;
     border-top: 1px solid var(--border-color);

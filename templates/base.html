@@ -36,8 +36,9 @@
         <div class="sidenav-overlay" data-sidenav-overlay></div>
         <aside id="appSidenav" class="sidenav" aria-hidden="true">
             <div class="sidenav-header">
-                <span class="sidenav-title">Menu</span>
-                <button class="sidenav-close" type="button" data-sidenav-close aria-label="Fechar menu">x</button>
+                <div class="sidenav-brand">
+                    <img src="{{ url_for('serve_public_asset', filename='logo.png') }}" alt="Logo Trivia" loading="lazy">
+                </div>
             </div>
             <div class="sidenav-content"></div>
             <div class="sidenav-footer">
