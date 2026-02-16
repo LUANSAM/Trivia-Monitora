@@ -15,19 +15,26 @@
                                     <span>{{ equipamento.nivel_display }}</span>
                                 </div>
                             </div>
-                            {% if not equipamento.status_online %}
-                            <div class="fuel-card__status fuel-card__status--offline">
-                                <span class="fuel-card__status-dot"></span>offline
-                            </div>
-                            {% endif %}
                         </div>
 
                         <div class="fuel-card__body-meta">
                             <h3>{{ equipamento.local }}</h3>
                             <p class="fuel-card__stat">Autonomia ≈ {{ equipamento.autonomia_display or '—' }}</p>
-                            <p class="fuel-card__update">{{ equipamento.ultima_atualizacao_display or 'indisponível' }}</p>
-                            <p class="fuel-card__update fuel-card__debug">Brasília: {{ equipamento.brasilia_now_display or '—' }} · Δ: {{ equipamento.ultima_diff_display or '—' }}</p>
+                            {% if not equipamento.status_online %}
+                            <div class="fuel-card__status fuel-card__status--offline">
+                                <span class="fuel-card__status-dot"></span>offline
+                            </div>
+                            {% endif %}
+                            <!-- Updated delta badge is positioned absolutely in the card -->
                         </div>
+                    </div>
+                    {% set minutes = equipamento.ultima_diff_minutes %}
+                    <div class="fuel-card__updated-badge {% if minutes is not none and minutes > 25 %}updated--white{% else %}updated--black{% endif %}">
+                        {% if minutes is not none %}
+                            Atualizado à {{ minutes|round(0)|int }} minutos
+                        {% else %}
+                            Atualizado à —
+                        {% endif %}
                     </div>
                 </article>
             {% endfor %}

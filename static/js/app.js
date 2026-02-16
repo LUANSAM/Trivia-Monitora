@@ -302,6 +302,8 @@ function setupFuelLevelsAutoRefresh() {
             const local = item.local || item.nome || 'Gerador';
             const fuelColor = item.level_color || '#1ec592';
 
+            const minutesInt = (item.ultima_diff_minutes !== null && item.ultima_diff_minutes !== undefined) ? Math.round(item.ultima_diff_minutes) : null;
+            const updatedClass = (nivelPercent > 25) ? 'updated--white' : 'updated--black';
             card.innerHTML = `
                 <div class="fuel-card__body fuel-card__body--compact">
                     <div class="fuel-card__gauge-wrapper">
@@ -310,16 +312,15 @@ function setupFuelLevelsAutoRefresh() {
                                 <span>${escapeHtml(nivelDisplay)}</span>
                             </div>
                         </div>
-                        ${item.status_online ? '' : `<div class="fuel-card__status fuel-card__status--offline"><span class="fuel-card__status-dot"></span>offline</div>`}
                     </div>
 
                     <div class="fuel-card__body-meta">
                         <h3>${escapeHtml(local)}</h3>
                         <p class="fuel-card__stat">Autonomia ≈ ${escapeHtml(autonomia)}</p>
-                        <p class="fuel-card__update">${escapeHtml(updated)}</p>
-                        <p class="fuel-card__update fuel-card__debug">Brasília: ${escapeHtml(brNow)} · Δ: ${escapeHtml(diff)}</p>
+                        ${item.status_online ? '' : `<div class="fuel-card__status fuel-card__status--offline"><span class="fuel-card__status-dot"></span>offline</div>`}
                     </div>
                 </div>
+                <div class="fuel-card__updated-badge ${updatedClass}">${minutesInt !== null ? `Atualizado à ${minutesInt} minutos` : 'Atualizado à —'}</div>
             `;
 
             fragment.appendChild(card);
