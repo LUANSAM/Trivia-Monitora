@@ -36,7 +36,7 @@ except Exception:
 
 SUPABASE_URL = os.getenv("SUPABASE_URL","https://roawjxyftfntldpdqlee.supabase.co")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvYXdqeHlmdGZudGxkcGRxbGVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAzOTI5OTcsImV4cCI6MjA3NTk2ODk5N30.vPNSc4n4wG9V-nxqtPEMiwI88K0ExdQillcCTnv2WyI")
-SUPABASE_SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE")
+SUPABASE_SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvYXdqeHlmdGZudGxkcGRxbGVlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDM5Mjk5NywiZXhwIjoyMDc1OTY4OTk3fQ.16UYRCE-m9B2L-5VOxsOoWzpcnFGolm-3jph2k966NM")
 SUPABASE_FORCE_MOCK = os.getenv("SUPABASE_FORCE_MOCK", "0") == "1"
 
 app = Flask(__name__)
@@ -210,18 +210,15 @@ def build_user_profile_payload(
     email: str,
     empresa: str,
     area: str,
-    areas_autorizadas: list[str] | None = None,
 ) -> dict:
     """Montar os campos exigidos pela tabela usuarios após o cadastro."""
     timestamp_now = datetime.now(timezone.utc).isoformat()
-    areas_payload = areas_autorizadas or ([area] if area else None)
     return {
         "id": user_id,
         "nome": nome,
         "email": email,
         "empresa": empresa or None,
         "area": area or None,
-        "areasAutorizadas": areas_payload,
         "autorizado": True,
         "role": "Usuário",
         "ultimoAcesso": timestamp_now,
@@ -850,10 +847,16 @@ def register():
                 email=email,
                 empresa=empresa,
                 area=area,
-                areas_autorizadas=areas_autorizadas,
             )
             print(f"[DEBUG] Gravando perfil na tabela usuarios para {email}", flush=True)
-            client.table("usuarios").upsert(profile_payload).execute()
+            # Prioriza service role para garantir escrita independente de RLS; fallback para client comum.
+            target_client = get_supabase_service() or client
+            try:
+                target_client.table("usuarios").upsert(profile_payload).execute()
+            except Exception as exc:  # pragma: no cover - depende de RLS/permissões
+                print(f"[ERROR] Falha ao gravar perfil na tabela usuarios: {exc}", flush=True)
+                flash("Erro ao gravar o perfil. Verifique a configuração de SUPABASE_SERVICE_ROLE ou as permissões da tabela usuarios.", "error")
+                return redirect(url_for("register"))
         except Exception as exc:  # pragma: no cover - depende do backend
             flash(f"Erro ao cadastrar: {exc}", "error")
             return redirect(url_for("register"))

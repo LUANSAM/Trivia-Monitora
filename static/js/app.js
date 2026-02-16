@@ -75,6 +75,71 @@ function setupToasts() {
     });
 }
 
+// Create and show a toast programmatically
+function showToast(message, type = 'info') {
+    const stack = document.querySelector('[data-toast-stack]');
+    if (!stack) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    const msg = document.createElement('div');
+    msg.className = 'toast-message';
+    msg.textContent = message;
+
+    const close = document.createElement('button');
+    close.className = 'toast-close';
+    close.setAttribute('type', 'button');
+    close.innerHTML = '&times;';
+    close.addEventListener('click', () => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 200);
+    });
+
+    toast.appendChild(msg);
+    toast.appendChild(close);
+    stack.appendChild(toast);
+
+    // Auto remove after 5s
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 200);
+        }
+    }, 5000);
+}
+
+// Setup menu actions (show 'em breve' toast for items marked soon)
+function setupSidenavMenuActions() {
+    const sidenav = document.getElementById('appSidenav');
+    if (!sidenav) return;
+
+    sidenav.addEventListener('click', (evt) => {
+        const target = evt.target.closest('[data-menu-action]');
+        if (!target) return;
+        const action = target.getAttribute('data-menu-action');
+        if (action === 'soon') {
+            evt.preventDefault();
+            showToast('em breve', 'info');
+            // close sidenav if open
+            const overlay = document.querySelector('[data-sidenav-overlay]');
+            const toggle = document.querySelector('[data-sidenav-toggle]');
+            if (overlay) overlay.classList.remove('is-visible');
+            sidenav.classList.remove('is-open');
+            document.body.classList.remove('sidenav-open');
+            if (toggle) toggle.setAttribute('aria-expanded', 'false');
+            sidenav.setAttribute('aria-hidden', 'true');
+        }
+    });
+}
+
+// Initialize additional handlers after DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+    setupSidenavMenuActions();
+    // expose showToast globally if need be
+    window.showToast = showToast;
+});
+
 function hydrateVehicleFields() {
     const select = document.getElementById('veiculoSelect');
     if (!select) return;

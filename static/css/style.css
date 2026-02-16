@@ -124,7 +124,7 @@ body {
     top: 0;
     left: 0;
     height: 100vh;
-    width: min(320px, 85vw);
+    width: calc(min(320px, 85vw)*0.75);
     background: var(--bg-card);
     border-right: 1px solid var(--border-color);
     box-shadow: var(--shadow);
@@ -153,6 +153,7 @@ body.sidenav-open {
     align-items: center;
     justify-content: space-between;
     padding: 18px 20px;
+    background-color: #ffffff;
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -180,7 +181,110 @@ body.sidenav-open {
 
 .sidenav-content {
     flex: 1;
+    padding: 12px 16px;
+}
+
+/* Sidebar visual customization to match provided design */
+.sidenav {
+    background: #202160; /* deep indigo */
+    color: #ffffff;
+}
+
+.sidenav-header {
+    padding: 12px 18px;
+    border-top-left-radius: 10px;
+    border-bottom: 2px solid #ff5a3c; /* thin accent */
+}
+
+.sidenav-brand img {
+    height: 64px;
+    width: auto;
+    display: block;
+    margin: 6px auto;
+}
+
+.app-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.app-nav .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    background: transparent;
+    color: #ffffff;
+    border-radius: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.app-nav .nav-link:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: #ffffff;
+}
+
+.app-nav .nav-link .nav-icon {
+    width: 24px;
+    height: 24px;
+    color: #ffffff;
+    stroke-width: 2.5;
+    flex-shrink: 0;
+}
+
+.app-nav .nav-link .nav-text {
+    flex: 1;
+    text-align: left;
+    font-size: 1rem;
+    color: #ffffff;
+}
+
+.app-nav .nav-link.active,
+.app-nav .nav-link.active:visited {
+    background: #b92a2a;
+    border-color: #b92a2a;
+    color: #ffffff;
+}
+
+.app-nav .nav-link.active .nav-icon,
+.app-nav .nav-link.active .nav-text {
+    color: #ffffff;
+}
+
+.app-nav .nav-link:focus {
+    outline: 2px solid rgba(255,255,255,0.3);
+    outline-offset: 2px;
+}
+
+.sidenav-footer {
     padding: 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.sidenav-auth-btn {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #d61313;
+    color: #fff;
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-decoration: none;
+}
+
+.sidenav .version {
+    display: block;
+    text-align: center;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.6);
+    margin-top: 8px;
 }
 
 /* Logo inside sidenav header */
@@ -232,6 +336,7 @@ body.sidenav-open {
     color: var(--text-muted);
 }
 
+/* Regra antiga do app-nav comentada para não conflitar com o sidenav
 .app-nav {
     display: flex;
     gap: 16px;
@@ -240,6 +345,7 @@ body.sidenav-open {
     border-bottom: 1px solid var(--border-color);
     flex-wrap: wrap;
 }
+*/
 
 .nav-link-logout {
     color: var(--danger-color);
@@ -791,32 +897,35 @@ textarea {
 
 .toast-stack {
     position: fixed;
-    top: 88px;
-    right: 24px;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
     flex-direction: column;
     gap: 12px;
     z-index: 120;
-    max-width: min(360px, 90vw);
+    max-width: min(480px, 90vw);
 }
 
 .toast {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(26, 29, 46, 0.95);
+    gap: 16px;
+    padding: 18px 24px;
+    border-radius: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    background: rgba(26, 29, 46, 0.98);
     color: var(--text-light);
-    box-shadow: var(--shadow);
-    animation: toast-slide 0.25s ease;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+    animation: toast-slide-up 0.35s ease;
+    backdrop-filter: blur(12px);
 }
 
 .toast-message {
-    font-size: 0.9rem;
-    line-height: 1.35;
+    font-size: 1.1rem;
+    line-height: 1.4;
+    font-weight: 600;
 }
 
 .toast-close {
@@ -862,6 +971,17 @@ textarea {
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+@keyframes toast-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
     }
 }
 
