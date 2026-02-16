@@ -37,7 +37,7 @@
                         <td>{{ usuario.nome }}</td>
                         <td class="email-column">{{ usuario.email }}</td>
                         <td>
-                            <div>{{ (usuario.areasAutorizadas or []) | join(', ') if usuario.areasAutorizadas else (usuario.area or '-') }}</div>
+                            <div>{{ usuario.area or '-' }}</div>
                             <div style="font-size: 0.85em; color: #666; margin-top: 2px;">{{ usuario.empresa }}</div>
                         </td>
                         <td>
@@ -48,7 +48,7 @@
                         </td>
                         <td class="created-column">{{ formatted_date }}</td>
                         <td class="actions-cell">
-                            <button class="btn-icon btn-edit" title="Editar usuário" data-user-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}" data-empresa="{{ usuario.empresa }}" data-area="{{ usuario.area }}" data-areas='{{ usuario.areasAutorizadas | tojson | safe }}' data-role="{{ usuario.role }}">
+                            <button class="btn-icon btn-edit" title="Editar usuário" data-user-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}" data-empresa="{{ usuario.empresa }}" data-area="{{ usuario.area }}" data-role="{{ usuario.role }}">
                                 ✏️
                             </button>
                             <button class="btn-icon btn-delete" title="Excluir usuário" data-user-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">
@@ -90,16 +90,13 @@
             </label>
             
             <label>
-                <span>Áreas autorizadas</span>
-                <div id="editAreasAutorizadas" class="areas-checkboxes">
+                <span>Área</span>
+                <select id="editArea" required>
+                    <option value="">Selecione a área...</option>
                     {% for area in areas %}
-                        <label class="checkbox-row">
-                            <input type="checkbox" value="{{ area.label }}">
-                            <span>{{ area.label }}</span>
-                        </label>
+                        <option value="{{ area.label }}">{{ area.label }}</option>
                     {% endfor %}
-                </div>
-                <div class="field-hint">Marque todas as áreas que o usuário poderá acessar.</div>
+                </select>
             </label>
 
             <label>
@@ -333,12 +330,6 @@ document.querySelectorAll('.btn-edit').forEach(btn => {
         const nome = btn.dataset.nome;
         const empresa = btn.dataset.empresa;
         const area = btn.dataset.area;
-        let areasList = [];
-        try {
-            areasList = btn.dataset.areas ? JSON.parse(btn.dataset.areas) : [];
-        } catch (err) {
-            areasList = [];
-        }
         const role = btn.dataset.role;
         
         document.getElementById('editUserId').value = userId;
@@ -347,17 +338,9 @@ document.querySelectorAll('.btn-edit').forEach(btn => {
         if (empresaField) {
             empresaField.value = empresa;
         }
-        const areasContainer = document.getElementById('editAreasAutorizadas');
-        if (areasContainer) {
-            const values = Array.isArray(areasList) ? areasList : [];
-            areasContainer.querySelectorAll('input[type="checkbox"]').forEach(box => {
-                box.checked = values.includes(box.value);
-            });
-        }
-        const areasReadonly = document.getElementById('editAreasReadonly');
-        if (areasReadonly) {
-            const text = areasList && areasList.length ? areasList.join(', ') : (area || '-');
-            areasReadonly.textContent = text;
+        const areaField = document.getElementById('editArea');
+        if (areaField) {
+            areaField.value = area || '';
         }
         const roleField = document.getElementById('editRole');
         if (roleField) {
@@ -375,7 +358,7 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     const userId = document.getElementById('editUserId').value;
     const nome = document.getElementById('editNome').value;
     const empresaField = document.getElementById('editEmpresa');
-    const areasContainer = document.getElementById('editAreasAutorizadas');
+    const areaField = document.getElementById('editArea');
     const roleField = document.getElementById('editRole');
     const role = roleField ? roleField.value : null;
     
@@ -384,10 +367,8 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
         if (empresaField) {
             payload.empresa = empresaField.value;
         }
-        if (areasContainer) {
-            const selectedAreas = Array.from(areasContainer.querySelectorAll('input[type="checkbox"]:checked')).map(box => box.value);
-            payload.areasAutorizadas = selectedAreas;
-            payload.area = selectedAreas[0] || '';
+        if (areaField) {
+            payload.area = areaField.value;
         }
         if (roleField && role) {
             payload.role = role;

@@ -17,28 +17,6 @@
         <p>Gerencie relatórios, usuários e veículos em um só lugar.</p>
         
         <!-- Preferências de Notificação -->
-        <div style="margin-top: 12px; padding: 8px 12px; background-color: #f3f4f6; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; max-width: 400px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                </svg>
-                <span style="color: #374151; font-size: 0.875rem;">Notificações por e-mail (em breve)</span>
-            </div>
-            <label class="switch" title="Ativar/desativar notificações automáticas por e-mail">
-                <input type="checkbox" id="notification-toggle" {% if current_user.notificacao %}checked{% endif %}>
-                <span class="slider"></span>
-            </label>
-        </div>
-    </div>
-    <div class="hero-actions">
-        {% if not open_trip %}
-            <a class="btn btn-primary" href="{{ url_for('novo_relatorio') }}">Nova viagem</a>
-        {% else %}
-            <a class="btn btn-primary" href="{{ url_for('finalizar_relatorio') }}">Finalizar viagem</a>
-        {% endif %}
-        <a class="btn btn-secondary" href="{{ url_for('registrar_abastecimento') }}">Abastecimento</a>
-        <a class="btn" href="{{ url_for('registrar_avaria') }}" style="background-color: #dc2626; color: white;">Registrar avaria</a>
     </div>
 </section>
 
@@ -109,7 +87,6 @@
                         <th class="hide-mobile">Saída</th>
                         <th class="hide-mobile">KM inicial</th>
                         <th class="hide-mobile">Combustível</th>
-                        <th>Ação</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -132,9 +109,6 @@
                             </td>
                             <td class="hide-mobile">{{ cab.km_inicial or '-' }}</td>
                             <td class="hide-mobile">{{ cab.combustivel or '-' }}</td>
-                            <td>
-                                <a class="btn btn-success btn-small" href="{{ url_for('finalizar_relatorio', relatorio_id=viagem.id) }}">Finalizar</a>
-                            </td>
                         </tr>
                     {% endfor %}
                 </tbody>
@@ -147,103 +121,7 @@
 {% endblock %}
 
 {% block scripts %}
-<style>
-    /* Toggle Switch para notificações */
-    .switch {
-        position: relative;
-        display: inline-block;
-        width: 48px;
-        height: 24px;
-    }
-    
-    .switch input {
-        opacity: 0;
-        width: 0;
-        height: 0;
-    }
-    
-    .slider {
-        position: absolute;
-        cursor: pointer;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: #ccc;
-        transition: .4s;
-        border-radius: 24px;
-    }
-    
-    .slider:before {
-        position: absolute;
-        content: "";
-        height: 18px;
-        width: 18px;
-        left: 3px;
-        bottom: 3px;
-        background-color: white;
-        transition: .4s;
-        border-radius: 50%;
-    }
-    
-    input:checked + .slider {
-        background-color: #4CAF50;
-    }
-    
-    input:focus + .slider {
-        box-shadow: 0 0 1px #4CAF50;
-    }
-    
-    input:checked + .slider:before {
-        transform: translateX(24px);
-    }
-</style>
 <script>
-    // Toggle de notificações
-    const notificationToggle = document.getElementById('notification-toggle');
-    if (notificationToggle) {
-        notificationToggle.addEventListener('change', async (e) => {
-            const notificacao = notificationToggle.checked;
-            
-            console.log('Toggle clicado. Estado:', notificacao);
-            
-            try {
-                const response = await fetch('/admin/minha-notificacao', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ notificacao: notificacao }),
-                });
-                
-                console.log('Response status:', response.status);
-                console.log('Response ok:', response.ok);
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('Resposta:', data);
-                    
-                    // Mostra feedback visual
-                    const msg = notificacao ? 'Notificações ativadas ✓' : 'Notificações desativadas';
-                    const tempMsg = document.createElement('div');
-                    tempMsg.textContent = msg;
-                    tempMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #10b981; color: white; padding: 12px 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
-                    document.body.appendChild(tempMsg);
-                    setTimeout(() => tempMsg.remove(), 3000);
-                } else {
-                    const errorData = await response.text();
-                    console.error('Erro do servidor:', errorData);
-                    alert('Erro ao atualizar configuração de notificações');
-                    notificationToggle.checked = !notificacao;
-                }
-            } catch (error) {
-                console.error('Erro na requisição:', error);
-                alert('Erro ao atualizar configuração de notificações');
-                notificationToggle.checked = !notificacao;
-            }
-        });
-    }
-
     // Atualiza os stats do dashboard em tempo real sem recarregar a página
     document.addEventListener('DOMContentLoaded', () => {
         const REFRESH_MS = 30000; // 30 segundos

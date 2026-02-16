@@ -164,6 +164,33 @@
             });
         });
     </script>
+    
+    <!-- Exibir mensagens flash do Flask como toasts -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        // Mapear categorias do Flask para tipos de toast
+                        const typeMap = {
+                            'success': 'success',
+                            'error': 'error',
+                            'danger': 'error',
+                            'warning': 'warning',
+                            'info': 'info'
+                        };
+                        const toastType = typeMap[{{ category | tojson }}] || 'info';
+                        
+                        // Usar a função showToast do app.js
+                        if (typeof showToast === 'function') {
+                            showToast({{ message | tojson }}, toastType);
+                        }
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        });
+    </script>
+    
     {% block scripts %}{% endblock %}
 </body>
 </html>

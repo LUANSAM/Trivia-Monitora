@@ -963,6 +963,11 @@ textarea {
     background: rgba(59, 130, 246, 0.15);
 }
 
+.toast-warning {
+    border-color: rgba(251, 191, 36, 0.5);
+    background: rgba(251, 191, 36, 0.15);
+}
+
 @keyframes toast-slide {
     from {
         opacity: 0;
@@ -1452,6 +1457,30 @@ table td:nth-child(7) {
     background: #ffffff;
     color: #0c1b2a;
     box-shadow: 0 18px 30px rgba(13, 25, 39, 0.15);
+}
+
+/* GPS icon inside fuel card (bottom-right) */
+.fuel-card__gps {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.06);
+    border: 2px solid rgba(12,28,42,0.06);
+    color: #0c1b2a;
+    text-decoration: none;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.fuel-card__gps:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(12,28,42,0.12);
+    background: rgba(0,0,0,0.08);
 }
 
 .fuel-card__body {

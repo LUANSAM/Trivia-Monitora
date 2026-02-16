@@ -22,6 +22,7 @@ from supabase import create_client, Client
 from werkzeug.utils import secure_filename
 import certifi
 import re
+from urllib.parse import quote_plus
 
 DOTENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 # Garante que o .env local sobrescreva variaveis ja definidas no ambiente.
@@ -44,6 +45,8 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB uploads
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = False  # Para dev local (http)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
 # Atualize estas listas para controlar as opções dos dropdowns da tela de cadastro.
 REGISTER_COMPANIES = [
@@ -386,6 +389,22 @@ def fetch_generator_levels() -> list[dict]:
             location_value = row.get("estacao")
         is_critical_focus = level_percent is not None and level_percent < 25
 
+        # Prepare address / maps URL using address fields inside `dados` (if present)
+        endereco_parts = []
+        try:
+            # `data` is the parsed JSONB from `dados`
+            for k in ("rua", "numero", "bairro", "cidade", "cep", "local"):
+                v = data.get(k) if isinstance(data, dict) else None
+                if v:
+                    endereco_parts.append(str(v).strip())
+        except Exception:
+            endereco_parts = []
+
+        endereco_text = ", ".join(endereco_parts).strip() if endereco_parts else None
+        maps_url = None
+        if endereco_text:
+            maps_url = f"https://www.google.com/maps/search/?api=1&query={quote_plus(endereco_text)}"
+
         levels.append(
             {
                 "id": row.get("id"),
@@ -399,6 +418,8 @@ def fetch_generator_levels() -> list[dict]:
                 "autonomia_display": f"{autonomia_total:.1f} h" if autonomia_total is not None else None,
                 "volume_tanque": data.get("tanque"),
                 "local": location_value or "Local não informado",
+                "dados": data,
+                "maps_url": maps_url,
                 "ultima_atualizacao_dt": ultima_dt,
                 # Normalize display string and remove any trailing 'UTC' label
                 "ultima_atualizacao_display": (lambda v: (v.replace(" UTC", "").replace("UTC", "").strip()) if v else None)(_format_datetime_display(ultima_dt) or row.get("ultimaAtualizacao")),
@@ -517,11 +538,10 @@ def _normalize_areas(raw) -> list[str]:
 
 def get_authorized_areas(user: dict | None) -> list[str]:
     user = user or {}
-    areas = user.get("areasAutorizadas") or user.get("areas_autorizadas")
-    normalized = _normalize_areas(areas)
-    if not normalized and user.get("area"):
-        normalized = [user.get("area")]
-    return normalized
+    # Retorna apenas a área única do usuário como lista
+    if user.get("area"):
+        return [user.get("area")]
+    return []
 
 
 def get_primary_area(user: dict | None) -> str | None:
@@ -596,7 +616,7 @@ def refresh_session_role() -> None:
         client = require_supabase()
         profile = (
             client.table("usuarios")
-            .select("nome, empresa, role, autorizado, area, areasAutorizadas")
+            .select("nome, empresa, role, autorizado, area")
             .eq("id", user["id"])
             .single()
             .execute()
@@ -609,11 +629,7 @@ def refresh_session_role() -> None:
             session["user"]["nome"] = data["nome"]
         if data.get("empresa") and data.get("empresa") != user.get("empresa"):
             session["user"]["empresa"] = data.get("empresa")
-        areas = get_authorized_areas({"areasAutorizadas": data.get("areasAutorizadas"), "area": data.get("area")})
-        session["user"]["areasAutorizadas"] = areas or None
-        if areas:
-            session["user"]["area"] = areas[0]
-        elif data.get("area") and data.get("area") != user.get("area"):
+        if data.get("area") and data.get("area") != user.get("area"):
             session["user"]["area"] = data.get("area")
     except Exception:
         # Se não conseguir atualizar, mantém o valor atual em sessão.
@@ -658,10 +674,6 @@ def log_request():
 @app.after_request
 def add_no_cache_headers(response):
     no_cache_endpoints = {
-        "registrar_abastecimento",
-        "novo_relatorio",
-        "finalizar_relatorio",
-        "registrar_avaria",
         "register",
         "login",
         "home",
@@ -760,7 +772,7 @@ def login():
             print(f"[DEBUG] Login Supabase ok para {email}", flush=True)
             profile = (
                 client.table("usuarios")
-                .select("id, nome, empresa, area, areasAutorizadas, autorizado, role, notificacao")
+                .select("id, nome, empresa, area, autorizado, role")
                 .eq("id", user.id)
                 .single()
                 .execute()
@@ -771,18 +783,15 @@ def login():
             return redirect(url_for("login"))
 
         role = profile_data.get("role") or ("admin" if profile_data.get("autorizado") else "user")
-        areas_autorizadas = get_authorized_areas(profile_data)
         session["user"] = {
             "id": user.id,
             "email": user.email,
             "nome": profile_data.get("nome") or (user.email.split("@")[0] if user.email else "Usuário"),
             "empresa": profile_data.get("empresa"),
-            "area": areas_autorizadas[0] if areas_autorizadas else profile_data.get("area"),
-            "areasAutorizadas": areas_autorizadas or None,
+            "area": profile_data.get("area"),
             "role": role,
-            "notificacao": profile_data.get("notificacao", False),
         }
-        print(f"[DEBUG] Login concluído para {user.email}, redirecionando para home", flush=True)
+        print(f"[DEBUG] Login concluído para {email}, redirecionando para home", flush=True)
         flash("Bem-vindo!", "success")
         return redirect(url_for("home"))
 
@@ -820,8 +829,6 @@ def register():
         if password != confirm:
             flash("As senhas não conferem.", "error")
             return redirect(url_for("register"))
-
-        areas_autorizadas = [area] if area else []
 
         client = require_supabase()
         try:
@@ -868,7 +875,6 @@ def register():
             "nome": nome,
             "empresa": empresa or None,
             "area": area or None,
-            "areasAutorizadas": areas_autorizadas or None,
             "role": "Usuário",
         }
         print(f"[DEBUG] Cadastro concluído para {email}, redirecionando para home", flush=True)
@@ -906,18 +912,14 @@ def logout():
 
 
 @app.route("/dashboard")
-@login_required()
+@login_required("admin")
 def dashboard():
     user = session.get("user")
     client = require_supabase()
-    if user.get("role") == "admin":
-        stats = load_admin_stats()
-        viagens_abertas = load_open_viagens(client)
-        open_trip = get_open_trip_for_user(client, user["id"])
-        return render_template("dashboard_admin.html", stats=stats, viagens_abertas=viagens_abertas, open_trip=open_trip)
+    stats = load_admin_stats()
+    viagens_abertas = load_open_viagens(client)
     open_trip = get_open_trip_for_user(client, user["id"])
-    vehicle = fetch_vehicle_details(client, open_trip.get("veiculo_id")) if open_trip else None
-    return render_template("dashboard_user.html", open_trip=open_trip, open_trip_vehicle=vehicle)
+    return render_template("dashboard_admin.html", stats=stats, viagens_abertas=viagens_abertas, open_trip=open_trip)
 
 
 def load_admin_stats() -> dict:
@@ -1000,163 +1002,6 @@ def load_open_viagens(client: Client) -> list[dict]:
             "placa": cab.get("placa"),
         }
     return open_data
-
-
-@app.route("/relatorios/novo", methods=["GET", "POST"])
-@login_required()
-def novo_relatorio():
-    client = require_supabase()
-    user = session.get("user")
-    # Filtrar veículos por empresa e area do usuário
-    query = client.table("veiculo").select("id, placa, modelo, marca, tipo, combustivel, circulando")
-
-    if user.get("empresa"):
-        query = query.eq("empresa", user["empresa"])
-    query = apply_area_filter(query, user)
-    
-    vehicles = (
-        query
-        .order("modelo")
-        .execute()
-        .data
-        or []
-    )
-    open_trip = get_open_trip_for_user(client, user["id"])
-    if open_trip and request.method == "GET":
-        flash("Você já possui uma viagem em andamento. Finalize antes de iniciar uma nova.", "info")
-        return redirect(url_for("finalizar_relatorio"))
-
-    if request.method == "POST":
-        try:
-            if open_trip:
-                raise ValueError("Finalize a viagem em andamento antes de iniciar outra.")
-            partida_payload = build_partida_payload(vehicles)
-            veiculo_id = partida_payload.get("veiculo_id")
-            ensure_vehicle_available(client, veiculo_id)
-            response = (
-                client.table("relatorios")
-                .insert(
-                    {
-                        "userID": user["id"],
-                        "veiculoID": veiculo_id,
-                        "relatorio_partida": partida_payload,
-                        "viagem_aberta": True,
-                        "partida_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                )
-                .execute()
-            )
-            relatorio_id = response.data[0]["id"] if response.data else None
-            # Avarias agora são registradas separadamente via dashboard
-            # process_avarias(client, partida_payload, relatorio_id, stage="partida", veiculo_id=veiculo_id)
-            if veiculo_id:
-                client.table("veiculo").update({"circulando": True}).eq("id", veiculo_id).execute()
-            flash("Viagem iniciada e checklist salvo!", "success")
-            return redirect(url_for("dashboard"))
-        except ValueError as exc:
-            print(f"[ValueError] {exc}", flush=True)
-            flash(str(exc), "error")
-        except Exception as exc:  # pragma: no cover - remote API
-            print(f"[Exception] {type(exc).__name__}: {exc}", flush=True)
-            flash(f"Erro ao salvar relatório: {exc}", "error")
-
-    return render_template(
-        "relatorio_form.html",
-        componentes=COMPONENTES,
-        risco_pontos=RISCO_PONTOS,
-        fuel_levels=FUEL_LEVELS,
-        veiculos=vehicles,
-    )
-
-
-@app.route("/relatorios/finalizar", methods=["GET", "POST"])
-@app.route("/relatorios/finalizar/<string:relatorio_id>", methods=["GET", "POST"])
-@login_required()
-def finalizar_relatorio(relatorio_id: str | None = None):
-    client = require_supabase()
-    user = session.get("user")
-    record = None
-    if relatorio_id:
-        try:
-            data = (
-                client.table("relatorios")
-                .select("id, relatorio_partida, viagem_aberta")
-                .eq("id", relatorio_id)
-                .limit(1)
-                .execute()
-                .data
-                or []
-            )
-            if data:
-                record = data[0]
-                partida = record.get("relatorio_partida") or {}
-                if isinstance(partida, dict):
-                    record["veiculo_id"] = partida.get("veiculo_id")
-                    condutor = partida.get("condutor") or {}
-                    record["user_id"] = condutor.get("user_id")
-            else:
-                record = None
-        except Exception:
-            record = None
-    if record is None:
-        record = get_open_trip_for_user(client, user["id"])
-
-    if not record or not record.get("viagem_aberta"):
-        flash("Nenhuma viagem aberta para finalizar.", "info")
-        return redirect(url_for("dashboard"))
-
-    if user.get("role") != "admin" and record.get("user_id") != user["id"]:
-        flash("Você não pode finalizar viagens abertas por outros usuários.", "error")
-        return redirect(url_for("dashboard"))
-
-    partida_payload = record.get("relatorio_partida") or {}
-    
-    # Extract veiculo_id from partida_payload if not in record
-    if not record.get("veiculo_id") and isinstance(partida_payload, dict):
-        record["veiculo_id"] = partida_payload.get("veiculo_id")
-    
-    print(f"[Finalizar] record veiculo_id: {record.get('veiculo_id')}", flush=True)
-    print(f"[Finalizar] partida_payload veiculo_id: {partida_payload.get('veiculo_id') if isinstance(partida_payload, dict) else 'N/A'}", flush=True)
-    
-    vehicle = fetch_vehicle_details(client, record.get("veiculo_id"))
-
-    if request.method == "POST":
-        try:
-            entrega_payload = build_entrega_payload(partida_payload if isinstance(partida_payload, dict) else None)
-            update_payload = {
-                "relatorio_entrega": entrega_payload,
-                "viagem_aberta": False,
-                "entrega_at": datetime.now(timezone.utc).isoformat(),
-            }
-            client.table("relatorios").update(update_payload).eq("id", record["id"]).execute()
-            
-            # Avarias agora são registradas separadamente via dashboard
-            # process_avarias(
-            #     client,
-            #     entrega_payload,
-            #     record["id"],
-            #     stage="entrega",
-            #     veiculo_id=record.get("veiculo_id"),
-            # )
-            if record.get("veiculo_id"):
-                client.table("veiculo").update({"circulando": False}).eq("id", record["veiculo_id"]).execute()
-            flash("Viagem finalizada e relatório salvo!", "success")
-            return redirect(url_for("dashboard"))
-        except ValueError as exc:
-            flash(str(exc), "error")
-        except Exception as exc:  # pragma: no cover
-            flash(f"Erro ao finalizar a viagem: {exc}", "error")
-
-    cabecalho_partida = (partida_payload.get("cabecalho") or {}) if isinstance(partida_payload, dict) else {}
-    return render_template(
-        "relatorio_finalizar.html",
-        relatorio=record,
-        cabecalho_partida=cabecalho_partida,
-        veiculo=vehicle,
-        fuel_levels=FUEL_LEVELS,
-        componentes=COMPONENTES,
-        risco_pontos=RISCO_PONTOS,
-    )
 
 
 def build_partida_payload(vehicles: list[dict]) -> dict:
@@ -1625,84 +1470,12 @@ def relatorio_detalhe(relatorio_id: str):
     )
 
 
-@app.route("/admin/avarias")
-@login_required("admin")
-def historico_avarias():
-    client = require_supabase()
-    try:
-        data = (
-            client.table("avaria")
-            .select("id, created_at, veiculoID, userID, descricao, foto")
-            .order("created_at", desc=True)
-            .limit(200)
-            .execute()
-            .data
-            or []
-        )
-    except Exception:
-        # Fallback: some DB schemas use snake_case column names (veiculo_id, user_id).
-        try:
-            data = (
-                client.table("avaria")
-                .select("id, created_at, veiculo_id, user_id, descricao, foto")
-                .order("created_at", desc=True)
-                .limit(200)
-                .execute()
-                .data
-                or []
-            )
-            data = _normalize_row_keys(data)
-        except Exception:
-            data = []
-    # Resolve vehicle placa/model and user nome for display
-    try:
-        veiculo_ids = list({(item.get("veiculoID") or item.get("veiculo_id")) for item in data if (item.get("veiculoID") or item.get("veiculo_id"))})
-        user_ids = list({(item.get("userID") or item.get("user_id")) for item in data if (item.get("userID") or item.get("user_id"))})
-        veiculos_lookup: dict[str, dict] = {}
-        usuarios_lookup: dict[str, dict] = {}
-        if veiculo_ids:
-            try:
-                veiculos_resp = (
-                    client.table("veiculo").select("id, placa, modelo").in_("id", veiculo_ids).execute().data or []
-                )
-                veiculos_lookup = {v["id"]: v for v in veiculos_resp}
-            except Exception:
-                veiculos_lookup = {}
-        if user_ids:
-            try:
-                usuarios_resp = (
-                    client.table("usuarios").select("id, nome").in_("id", user_ids).execute().data or []
-                )
-                usuarios_lookup = {u["id"]: u for u in usuarios_resp}
-            except Exception:
-                usuarios_lookup = {}
-
-        for item in data:
-            vid = item.get("veiculoID") or item.get("veiculo_id")
-            uid = item.get("userID") or item.get("user_id")
-            veiculo_ref = veiculos_lookup.get(vid)
-            usuario_ref = usuarios_lookup.get(uid)
-            # Prefer showing 'modelo · placa' when available, fallback to id
-            if veiculo_ref:
-                modelo = (veiculo_ref.get("modelo") or "").strip()
-                placa = (veiculo_ref.get("placa") or "").strip()
-                item["veiculoID"] = f"{modelo} · {placa}" if modelo or placa else vid
-            else:
-                item["veiculoID"] = vid
-            item["userID"] = (usuario_ref or {}).get("nome") or uid
-    except Exception:
-        # If lookups fail, leave IDs as-is
-        pass
-
-    return render_template("avarias_list.html", avarias=data)
-
-
 @app.route("/admin/usuarios")
 @login_required("admin")
 def lista_usuarios():
     client = require_supabase()
     user = session.get("user") or {}
-    query = client.table("usuarios").select("id, nome, email, empresa, area, areasAutorizadas, autorizado, created_at, role, notificacao")
+    query = client.table("usuarios").select("id, nome, email, empresa, area, autorizado, created_at, role")
 
     if user.get("email") != "luan.sampaio@triviatrens.com.br":
         if user.get("empresa"):
@@ -1733,42 +1506,6 @@ def atualizar_status_usuario(user_id: str):
         return {"error": str(exc)}, 400
 
 
-@app.route("/admin/usuarios/<string:user_id>/notificacao", methods=["POST"])
-@login_required("admin")
-def atualizar_notificacao_usuario(user_id: str):
-    client = require_supabase()
-    try:
-        payload = request.get_json()
-        notificacao = payload.get("notificacao", False)
-        client.table("usuarios").update({"notificacao": notificacao}).eq("id", user_id).execute()
-        return {"success": True}, 200
-    except Exception as exc:  # pragma: no cover
-        return {"error": str(exc)}, 400
-
-
-@app.route("/admin/minha-notificacao", methods=["POST"])
-@login_required("admin")
-def atualizar_minha_notificacao():
-    """Permite que o admin atualize sua própria preferência de notificação"""
-    client = require_supabase()
-    user = session.get("user")
-    print(f"[NOTIFICACAO] User ID: {user.get('id') if user else 'None'}")
-    try:
-        payload = request.get_json()
-        notificacao = payload.get("notificacao", False)
-        print(f"[NOTIFICACAO] Alterando para: {notificacao}")
-        result = client.table("usuarios").update({"notificacao": notificacao}).eq("id", user["id"]).execute()
-        print(f"[NOTIFICACAO] Resultado: {result.data}")
-        # Atualiza a sessão
-        session["user"]["notificacao"] = notificacao
-        return {"success": True}, 200
-    except Exception as exc:  # pragma: no cover
-        print(f"[NOTIFICACAO] ERRO: {exc}")
-        return {"error": str(exc)}, 400
-    finally:
-        session.modified = True
-
-
 @app.route("/admin/usuarios/<string:user_id>/edit", methods=["POST"])
 @login_required("admin")
 def editar_usuario(user_id: str):
@@ -1779,7 +1516,6 @@ def editar_usuario(user_id: str):
         empresa = payload.get("empresa", "").strip()
         area = payload.get("area", "").strip()
         role = (payload.get("role") or "").strip()
-        areas_autorizadas = payload.get("areasAutorizadas")
         
         if not nome:
             return {"error": "Nome é obrigatório"}, 400
@@ -1789,17 +1525,10 @@ def editar_usuario(user_id: str):
             "empresa": empresa,
         }
 
-        # Apenas o usuário específico pode editar a lista de áreas autorizadas
+        # Define a área
         current_user = session.get("user") or {}
-        if current_user.get("email") == "luan.sampaio@triviatrens.com.br":
-            normalized_areas = _normalize_areas(areas_autorizadas)
-            update_payload["areasAutorizadas"] = normalized_areas or None
-            # Mantém coluna area alinhada ao primeiro item para compatibilidade
-            primary_area = normalized_areas[0] if normalized_areas else (area or None)
-            update_payload["area"] = primary_area
-        else:
-            if area:
-                update_payload["area"] = area
+        if area:
+            update_payload["area"] = area
 
         if current_user.get("email") == "luan.sampaio@triviatrens.com.br" and role:
             if role not in {"admin", "user"}:
@@ -1829,205 +1558,6 @@ def deletar_usuario(user_id: str):
             except Exception:
                 pass  # Se falhar, continua de qualquer forma
         
-        return {"success": True}, 200
-    except Exception as exc:  # pragma: no cover
-        return {"error": str(exc)}, 400
-
-
-@app.route("/admin/veiculos", methods=["GET", "POST"])
-@login_required("admin")
-def gerenciar_veiculos():
-    client = require_supabase()
-    if request.method == "POST":
-        placa = request.form.get("placa", "").upper()
-        modelo = request.form.get("modelo")
-        marca = request.form.get("marca")
-        tipo = request.form.get("tipo")
-        combustivel = request.form.get("combustivel")
-        foto = request.files.get("foto_veiculo")
-        
-        # Validar todos os campos obrigatórios
-        if not placa or not modelo or not tipo or not combustivel:
-            flash("Informe placa, modelo, tipo e combustível.", "error")
-            return redirect(url_for("gerenciar_veiculos"))
-        
-        # Validar se a foto foi enviada
-        if not foto or not foto.filename:
-            flash("Foto é obrigatória para cadastrar um veículo.", "error")
-            return redirect(url_for("gerenciar_veiculos"))
-        
-        # Obter empresa e area do usuário logado
-        user = session.get("user") or {}
-        empresa = user.get("empresa")
-        area = get_primary_area(user)
-        
-        inserted = (
-            client.table("veiculo")
-            .insert({
-                "placa": placa,
-                "modelo": modelo,
-                "marca": marca,
-                "tipo": tipo,
-                "combustivel": combustivel,
-                "empresa": empresa,
-                "area": area
-            })
-            .execute()
-            .data
-        )
-        veiculo_id = inserted[0]["id"] if inserted else None
-        if veiculo_id and foto and foto.filename:
-            upload_image("veiculos", foto, f"{veiculo_id}")
-        flash("Veículo cadastrado!", "success")
-        return redirect(url_for("gerenciar_veiculos"))
-
-    # Filtrar veículos por empresa e area do usuário
-    user = session.get("user") or {}
-    query = client.table("veiculo").select("id, placa, modelo, marca, tipo, combustivel, empresa, area, created_at")
-
-    if user.get("empresa"):
-        query = query.eq("empresa", user["empresa"])
-    query = apply_area_filter(query, user)
-    
-    veiculos = (
-        query
-        .order("created_at", desc=True)
-        .execute()
-        .data
-        or []
-    )
-
-    # KM rodado por veículo a partir dos relatórios (km_final - km_inicial)
-    km_por_veiculo: dict[str, int] = {}
-    try:
-        relatorios = (
-            client.table("relatorios")
-            .select("relatorio_partida, relatorio_entrega")
-            .limit(1000)
-            .execute()
-            .data
-            or []
-        )
-        for rel in relatorios:
-            partida = rel.get("relatorio_partida") or {}
-            entrega = rel.get("relatorio_entrega") or {}
-            if not isinstance(partida, dict):
-                continue
-            veiculo_rel = partida.get("veiculo_id") or partida.get("veiculoID")
-            if not veiculo_rel:
-                continue
-            cab_p = partida.get("cabecalho") or {}
-            cab_e = entrega.get("cabecalho") or {}
-            try:
-                km_i = int(cab_p.get("km_inicial")) if cab_p.get("km_inicial") is not None else None
-                km_f = int(cab_e.get("km_final")) if cab_e.get("km_final") is not None else None
-                if km_i is None or km_f is None:
-                    continue
-                km_por_veiculo[veiculo_rel] = km_por_veiculo.get(veiculo_rel, 0) + (km_f - km_i)
-            except (TypeError, ValueError):
-                continue
-    except Exception:
-        # Se falhar, seguimos sem o agregado de km
-        pass
-
-    tipo_lookup = {item["id"]: item["label"] for item in VEICULO_TIPOS}
-    combustivel_lookup = {item["id"]: item["label"] for item in VEICULO_COMBUSTIVEIS}
-    brand_lookup = {brand["label"].lower(): brand for brand in VEICULO_MARCAS}
-    model_lookup = {}
-    for brand in VEICULO_MARCAS:
-        for model in brand["models"]:
-            model_lookup[model["label"].lower()] = {"model": model, "brand": brand}
-
-    for item in veiculos:
-        item["foto_url"] = fetch_vehicle_photo(item["id"])
-        item["tipo_label"] = tipo_lookup.get(item.get("tipo"), item.get("tipo") or "-")
-        item["combustivel_label"] = combustivel_lookup.get(item.get("combustivel"), item.get("combustivel") or "-")
-        item["km_rodado"] = km_por_veiculo.get(item["id"], 0)
-        marca_label = (item.get("marca") or "").strip()
-        modelo_label = (item.get("modelo") or "").strip()
-
-        brand_match = brand_lookup.get(marca_label.lower()) if marca_label else None
-        model_match = model_lookup.get(modelo_label.lower()) if modelo_label else None
-
-        item["marca_id"] = brand_match["id"] if brand_match else (model_match["brand"]["id"] if model_match else "")
-        item["modelo_id"] = model_match["model"]["id"] if model_match else ""
-
-        if model_match and not item.get("tipo"):
-            item["tipo"] = model_match["model"]["tipo_id"]
-            item["tipo_label"] = tipo_lookup.get(item["tipo"], item["tipo"])
-
-    # Ordenar por km rodado (desc)
-    veiculos.sort(key=lambda v: v.get("km_rodado") or 0, reverse=True)
-
-    return render_template(
-        "veiculos.html",
-        veiculos=veiculos,
-        marcas=VEICULO_MARCAS,
-        tipos=VEICULO_TIPOS,
-        combustiveis=VEICULO_COMBUSTIVEIS,
-    )
-
-
-@app.route("/admin/veiculos/<string:veiculo_id>", methods=["POST"])
-@login_required("admin")
-def atualizar_veiculo(veiculo_id: str):
-    client = require_supabase()
-    payload = {
-        "placa": request.form.get("placa", "").upper(),
-        "modelo": request.form.get("modelo"),
-        "marca": request.form.get("marca"),
-        "tipo": request.form.get("tipo"),
-        "combustivel": request.form.get("combustivel"),
-    }
-    client.table("veiculo").update(payload).eq("id", veiculo_id).execute()
-    foto = request.files.get("foto_veiculo")
-    if foto and foto.filename:
-        upload_image("veiculos", foto, f"{veiculo_id}")
-    flash("Veículo atualizado.", "success")
-    return redirect(url_for("gerenciar_veiculos"))
-
-
-@app.route("/admin/veiculos/<string:veiculo_id>/edit", methods=["POST"])
-@login_required("admin")
-def editar_veiculo_ajax(veiculo_id: str):
-    client = require_supabase()
-    try:
-        payload = request.get_json(silent=True) or {}
-        placa = (payload.get("placa") or "").strip().upper()
-        modelo = (payload.get("modelo") or "").strip()
-        marca = (payload.get("marca") or "").strip()
-        tipo = (payload.get("tipo") or "").strip()
-        combustivel = (payload.get("combustivel") or "").strip()
-
-        if not placa or not modelo:
-            return {"error": "Placa e modelo são obrigatórios."}, 400
-
-        empresa = payload.get("empresa", "").strip()
-        area = payload.get("area", "").strip()
-        
-        update_payload = {
-            "placa": placa,
-            "modelo": modelo,
-            "marca": marca,
-            "tipo": tipo,
-            "combustivel": combustivel,
-            "empresa": empresa or None,
-            "area": area or None,
-        }
-
-        client.table("veiculo").update(update_payload).eq("id", veiculo_id).execute()
-        return {"success": True}, 200
-    except Exception as exc:  # pragma: no cover
-        return {"error": str(exc)}, 400
-
-
-@app.route("/admin/veiculos/<string:veiculo_id>/delete", methods=["DELETE"])
-@login_required("admin")
-def deletar_veiculo_ajax(veiculo_id: str):
-    client = require_supabase()
-    try:
-        client.table("veiculo").delete().eq("id", veiculo_id).execute()
-        delete_vehicle_photos(veiculo_id)
         return {"success": True}, 200
     except Exception as exc:  # pragma: no cover
         return {"error": str(exc)}, 400
@@ -2076,146 +1606,6 @@ def delete_vehicle_photos(veiculo_id: str) -> None:
         storage.remove(paths)
     except Exception:
         pass
-
-
-@app.route("/avarias/novo", methods=["GET", "POST"])
-@login_required()
-def registrar_avaria():
-    client = require_supabase()
-    user = session.get("user")
-    
-    # Filtrar veículos por empresa e area do usuário
-    query = client.table("veiculo").select("id, placa, modelo")
-
-    if user.get("empresa"):
-        query = query.eq("empresa", user["empresa"])
-    query = apply_area_filter(query, user)
-    
-    veiculos = (
-        query
-        .order("modelo")
-        .execute()
-        .data
-        or []
-    )
-    if request.method == "POST":
-        veiculo_id = request.form.get("veiculo_id")
-        data_hora_avaria = request.form.get("data_hora_avaria")
-        
-        if not veiculo_id:
-            flash("Selecione um veículo.", "error")
-            return redirect(url_for("registrar_avaria"))
-        
-        if not data_hora_avaria:
-            flash("Informe a data e horário da constatação.", "error")
-            return redirect(url_for("registrar_avaria"))
-        
-        descricao_list = request.form.getlist("avaria_descricao[]")
-        local_list = request.form.getlist("avaria_local[]")
-        fotos = request.files.getlist("avaria_foto[]")
-        
-        # Busca informações do veículo para notificação
-        veiculo_info = None
-        try:
-            veiculo_data = client.table("veiculo").select("*").eq("id", veiculo_id).execute().data
-            if veiculo_data:
-                veiculo_info = veiculo_data[0]
-        except Exception:
-            pass
-        
-        avarias_registradas = 0
-        for idx, descricao in enumerate(descricao_list):
-            descricao = descricao.strip()
-            foto = fotos[idx] if idx < len(fotos) else None
-            local = local_list[idx] if idx < len(local_list) else None
-            
-            if not descricao and (not foto or not foto.filename):
-                continue
-                
-            foto_url = None
-            if foto and foto.filename:
-                foto_url = upload_image(
-                    bucket="avarias",
-                    file_storage=foto,
-                    prefix=f"{veiculo_id}/{uuid.uuid4()}",
-                )
-            
-            client.table("avaria").insert(
-                {
-                    "veiculo_id": veiculo_id,
-                    "user_id": session["user"]["id"],
-                    "descricao": descricao or local,
-                    "foto": foto_url,
-                }
-            ).execute()
-            
-            avarias_registradas += 1
-        
-        if avarias_registradas > 0:
-            flash(f"{avarias_registradas} avaria(s) registrada(s) com sucesso!", "success")
-        else:
-            flash("Preencha pelo menos uma avaria com descrição e foto.", "error")
-            return redirect(url_for("registrar_avaria"))
-        
-        return redirect(url_for("dashboard"))
-    
-    return render_template("avarias_form.html", veiculos=veiculos)
-
-
-@app.route("/abastecimentos/novo", methods=["GET", "POST"])
-@login_required()
-def registrar_abastecimento():
-    client = require_supabase()
-    user = session.get("user")
-    
-    # Filtrar veículos por empresa e area do usuário
-    query = client.table("veiculo").select("id, placa, modelo")
-
-    if user.get("empresa"):
-        query = query.eq("empresa", user["empresa"])
-    query = apply_area_filter(query, user)
-    
-    veiculos = (
-        query
-        .order("modelo")
-        .execute()
-        .data
-        or []
-    )
-    if request.method == "POST":
-        veiculo_id = request.form.get("veiculo_id")
-        data_abastecimento = request.form.get("data") or datetime.utcnow().isoformat()
-        km = request.form.get("km")
-        valor = request.form.get("valor")
-        litros = request.form.get("litros")
-        nota_texto = request.form.get("nota_texto")
-        abastecimento_id = str(uuid.uuid4())
-        foto_km = request.files.get("foto_km")
-        foto_nota = request.files.get("foto_nota")
-        foto_km_url = upload_image("abastecimentos", foto_km, f"{abastecimento_id}/km") if foto_km else None
-        foto_nota_url = upload_image("abastecimentos", foto_nota, f"{abastecimento_id}/nota") if foto_nota else None
-        nota_payload = {
-            "texto": nota_texto,
-            "foto_nota_url": foto_nota_url,
-            "foto_km_url": foto_km_url,
-        }
-        client.table("abastecimentos").insert(
-            {
-                "id": abastecimento_id,
-                "veiculoID": veiculo_id,
-                "userID": session["user"]["id"],
-                "data": data_abastecimento,
-                "km": int(km) if km else None,
-                "valor": float(valor) if valor else None,
-                "litros": float(litros) if litros else None,
-                "nota": json.dumps(nota_payload),
-            }
-        ).execute()
-        flash("Abastecimento registrado!", "success")
-        # Redireciona para o dashboard adequado conforme o perfil
-        return redirect(url_for("dashboard"))
-
-    return render_template("abastecimentos_form.html", veiculos=veiculos)
 
 
 @app.route("/abastecimentos/historico")
