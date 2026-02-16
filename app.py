@@ -275,7 +275,7 @@ def _parse_datetime(value):
 def _format_datetime_display(dt_value):
     if not dt_value:
         return None
-    return dt_value.astimezone(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+    return dt_value.astimezone(timezone.utc).strftime("%d/%m/%Y - %H:%M")
 
 
 def _should_display_level(raw) -> bool:
@@ -324,6 +324,7 @@ def fetch_generator_levels() -> list[dict]:
             client.table("equipamentos")
             .select("id, nome, tipo, exibeNivel, nivelAtual, ultimaAtualizacao, dados, estacao")
             .eq("tipo", "Gerador")
+            .eq("exibeNivel", True)
             .order("nome", desc=False)
             .execute()
         )
@@ -363,7 +364,9 @@ def fetch_generator_levels() -> list[dict]:
             autonomia_total = round(level_ratio * autonomia_base, 1)
 
         ultima_dt = _parse_datetime(row.get("ultimaAtualizacao"))
-        location = estacao_meta.get("estacao") or (row.get("estacao") if isinstance(row.get("estacao"), str) else None)
+        location_value = estacao_meta.get("estacao")
+        if not location_value and isinstance(row.get("estacao"), str):
+            location_value = row.get("estacao")
         is_critical_focus = level_percent is not None and level_percent < 25
 
         levels.append(
@@ -378,9 +381,10 @@ def fetch_generator_levels() -> list[dict]:
                 "autonomia_value": autonomia_total,
                 "autonomia_display": f"{autonomia_total:.1f} h" if autonomia_total is not None else None,
                 "volume_tanque": data.get("tanque"),
-                "local": location or "Local não informado",
+                "local": location_value or "Local não informado",
                 "ultima_atualizacao_dt": ultima_dt,
-                "ultima_atualizacao_display": _format_datetime_display(ultima_dt) or row.get("ultimaAtualizacao"),
+                # Normalize display string and remove any trailing 'UTC' label
+                "ultima_atualizacao_display": (lambda v: (v.replace(" UTC", "").replace("UTC", "").strip()) if v else None)(_format_datetime_display(ultima_dt) or row.get("ultimaAtualizacao")),
                 "ultima_atualizacao_iso": ultima_dt.isoformat() if ultima_dt else row.get("ultimaAtualizacao"),
             }
         )

@@ -1412,6 +1412,27 @@ table td:nth-child(7) {
     box-shadow: 0 18px 35px rgba(255, 51, 85, 0.2);
 }
 
+/* Subtle backgrounds for non-critical fuel cards (<= safe/moderate) */
+.fuel-card--safe {
+    background: #f5f6f8; /* lighter gray */
+    color: #0c1b2a;
+    border-color: rgba(12,28,42,0.06);
+    box-shadow: 0 8px 18px rgba(6,10,18,0.04);
+}
+
+.fuel-card--moderate {
+    background: #f8f9fb;
+    color: #0c1b2a;
+    border-color: rgba(12,28,42,0.07);
+    box-shadow: 0 10px 20px rgba(6,10,18,0.05);
+}
+
+.fuel-card--unknown {
+    background: #f7f7f9;
+    color: #0c1b2a;
+    border-color: rgba(12,28,42,0.08);
+}
+
 .fuel-card--low .semi-gauge::before {
     animation: pulse-glow 1.8s ease-in-out infinite;
     box-shadow: 0 0 25px rgba(255, 51, 85, 0.35);
