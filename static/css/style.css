@@ -1407,6 +1407,25 @@ table td:nth-child(7) {
     color: #6b7280;
 }
 
+.fuel-card__updated-badge {
+    position: absolute;
+    bottom: 12px;
+    right: 16px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    pointer-events: none;
+}
+
+.updated--white {
+    color: #ffffff;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.25);
+}
+
+.updated--black {
+    color: #0c1b2a;
+}
+
 .semi-gauge {
     position: relative;
     width: 160px;
@@ -1439,7 +1458,8 @@ table td:nth-child(7) {
     width: 136px;
     height: 136px;
     border-radius: 50%;
-    background: #fff;
+    /* transparent inner circle so glow/pulse is visible on colored gauges */
+    background: transparent;
 }
 
 .semi-gauge__dial {
@@ -1464,19 +1484,19 @@ table td:nth-child(7) {
 
 .fuel-card--low {
     border-color: rgba(255, 51, 85, 0.8);
-    box-shadow: 0 18px 35px rgba(255, 51, 85, 0.2);
+    box-shadow: 0 18px 35px rgba(255, 51, 85, 0.22);
 }
 
 /* Subtle backgrounds for non-critical fuel cards (<= safe/moderate) */
 .fuel-card--safe {
-    background: #f5f6f8; /* lighter gray */
+    background: #b7b7b8; /* lighter gray */
     color: #0c1b2a;
     border-color: rgba(12,28,42,0.06);
     box-shadow: 0 8px 18px rgba(6,10,18,0.04);
 }
 
 .fuel-card--moderate {
-    background: #f8f9fb;
+    background: #b7b7b8;
     color: #0c1b2a;
     border-color: rgba(12,28,42,0.07);
     box-shadow: 0 10px 20px rgba(6,10,18,0.05);
@@ -1489,32 +1509,42 @@ table td:nth-child(7) {
 }
 
 .fuel-card--low .semi-gauge::before {
-    animation: pulse-glow 1.8s ease-in-out infinite;
-    box-shadow: 0 0 25px rgba(255, 51, 85, 0.35);
+    /* stronger, faster pulsing glow for critical cards */
+    animation: pulse-red-fast 1.25s ease-in-out infinite;
+    box-shadow: 0 0 48px rgba(255, 51, 85, 0.55);
+    filter: drop-shadow(0 6px 18px rgba(255, 51, 85, 0.25));
 }
 
 /* Enhanced red emphasis for critical (below 25%) fuel levels */
 .fuel-card--low {
-    border: 2px solid rgba(255, 51, 85, 0.95);
-    box-shadow: 0 22px 50px rgba(255, 51, 85, 0.28), 0 6px 30px rgba(0,0,0,0.08) inset;
+    border: 2px solid rgba(255, 51, 85, 0.98);
+    box-shadow: 0 26px 64px rgba(255, 51, 85, 0.30), 0 6px 30px rgba(0,0,0,0.08) inset;
     position: relative;
     overflow: visible;
 }
 
 .fuel-card--low::after {
-    /* subtle outer glow ring */
+    /* pronounced outer glow ring for critical cards */
     content: "";
     position: absolute;
     inset: -8px;
     border-radius: 1.25rem;
     pointer-events: none;
-    box-shadow: 0 10px 40px rgba(255, 51, 85, 0.18);
+    box-shadow: 0 18px 64px rgba(255, 51, 85, 0.22);
     opacity: 1;
 }
 
 .fuel-card--low .semi-gauge::before {
-    animation: pulse-red 1.6s ease-in-out infinite;
+    /* keep compatibility: a slightly slower subtle pulse remains available */
+    animation: pulse-red 1.8s ease-in-out infinite;
     box-shadow: 0 0 42px rgba(255, 51, 85, 0.45);
+}
+
+/* make the number inside the gauge pop for critical cards */
+.fuel-card--low .semi-gauge__dial span {
+    color: #e83b50;
+    text-shadow: 0 2px 8px rgba(232, 59, 80, 0.25);
+    animation: pulse-number 1s ease-in-out infinite;
 }
 
 @keyframes pulse-red {
@@ -1530,6 +1560,35 @@ table td:nth-child(7) {
         transform: scale(1);
         opacity: 0.92;
     }
+}
+
+@keyframes pulse-red-fast {
+    0% {
+        transform: scale(1);
+        opacity: 0.9;
+        filter: blur(0px);
+    }
+    40% {
+        transform: scale(1.06);
+        opacity: 1;
+        filter: blur(0.6px);
+    }
+    60% {
+        transform: scale(1.04);
+        opacity: 1;
+        filter: blur(0.4px);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0.9;
+        filter: blur(0px);
+    }
+}
+
+@keyframes pulse-number {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+    100% { transform: scale(1); }
 }
 
 @keyframes pulse-glow {
