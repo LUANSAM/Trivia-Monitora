@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupChecklistStatus();
     setupFuelSlider();
     setupFormSubmission();
+    setupFuelLevelsAutoRefresh();
 });
 
 function setupSidenav() {
@@ -267,4 +268,80 @@ function setupFormSubmission() {
             }
         });
     });
+}
+
+function setupFuelLevelsAutoRefresh() {
+    const grid = document.querySelector('[data-fuel-grid]');
+    if (!grid) return;
+
+    const escapeHtml = (value) => {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    };
+
+    const renderCards = (items, brasiliaNowFromApi) => {
+        const fragment = document.createDocumentFragment();
+        items.forEach((item) => {
+            const card = document.createElement('article');
+            const criticalClass = item.is_critical_focus ? ' fuel-card--low' : '';
+            card.className = `fuel-card fuel-card--${escapeHtml(item.nivel_status || 'unknown')}${criticalClass}`;
+
+            const onlineClass = item.status_online ? 'online' : 'offline';
+            const statusLabel = item.status_online ? 'online' : 'offline';
+            const nivelPercent = item.nivel_percent ?? 0;
+            const nivelDisplay = item.nivel_display || '—';
+            const autonomia = item.autonomia_display || '—';
+            const updated = item.ultima_atualizacao_display || 'indisponível';
+            const brNow = item.brasilia_now_display || brasiliaNowFromApi || '—';
+            const diff = item.ultima_diff_display || '—';
+            const local = item.local || item.nome || 'Gerador';
+            const fuelColor = item.level_color || '#1ec592';
+
+            card.innerHTML = `
+                <div class="fuel-card__body fuel-card__body--compact">
+                    <div class="fuel-card__gauge-wrapper">
+                        <div class="semi-gauge" style="--fuel-level: ${nivelPercent}; --fuel-color: ${fuelColor};" role="img" aria-label="Nível ${escapeHtml(nivelDisplay)} de ${escapeHtml(item.nome || '')}">
+                            <div class="semi-gauge__dial">
+                                <span>${escapeHtml(nivelDisplay)}</span>
+                            </div>
+                        </div>
+                        ${item.status_online ? '' : `<div class="fuel-card__status fuel-card__status--offline"><span class="fuel-card__status-dot"></span>offline</div>`}
+                    </div>
+
+                    <div class="fuel-card__body-meta">
+                        <h3>${escapeHtml(local)}</h3>
+                        <p class="fuel-card__stat">Autonomia ≈ ${escapeHtml(autonomia)}</p>
+                        <p class="fuel-card__update">${escapeHtml(updated)}</p>
+                        <p class="fuel-card__update fuel-card__debug">Brasília: ${escapeHtml(brNow)} · Δ: ${escapeHtml(diff)}</p>
+                    </div>
+                </div>
+            `;
+
+            fragment.appendChild(card);
+        });
+
+        grid.replaceChildren(fragment);
+    };
+
+    const fetchAndRender = async () => {
+        try {
+            const response = await fetch('/api/fuel-levels', { cache: 'no-store' });
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data && Array.isArray(data.items)) {
+                renderCards(data.items, data.brasilia_now);
+            }
+        } catch (err) {
+            console.warn('Falha ao atualizar níveis de combustível', err);
+        }
+    };
+
+    // Primeiro carregamento imediato e depois a cada 5s
+    fetchAndRender();
+    setInterval(fetchAndRender, 5000);
 }

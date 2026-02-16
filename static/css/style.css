@@ -1340,6 +1340,56 @@ table td:nth-child(7) {
     color: #0c1b2a;
 }
 
+.fuel-card__gauge-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.fuel-card__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    width: fit-content;
+    border: 1px solid transparent;
+}
+
+.fuel-card__status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.fuel-card__status--online {
+    background: rgba(16, 185, 129, 0.12);
+    color: #0f9b70;
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.fuel-card__status--online .fuel-card__status-dot {
+    background: #0f9b70;
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+}
+
+.fuel-card__status--offline {
+    background: rgba(255, 71, 87, 0.1);
+    color: #d6253a;
+    border-color: rgba(255, 71, 87, 0.35);
+}
+
+.fuel-card__status--offline .fuel-card__status-dot {
+    background: #d6253a;
+    box-shadow: 0 0 0 4px rgba(255, 71, 87, 0.14);
+}
+
 .fuel-card__stat {
     margin: 0 0 0.25rem 0;
     font-weight: 600;
@@ -1350,6 +1400,11 @@ table td:nth-child(7) {
     margin: 0;
     font-size: 0.75rem;
     color: #94a3b8;
+}
+
+.fuel-card__debug {
+    font-size: 0.72rem;
+    color: #6b7280;
 }
 
 .semi-gauge {

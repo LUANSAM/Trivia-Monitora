@@ -3,7 +3,7 @@ import os
 import secrets
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from functools import wraps
 
 from dotenv import load_dotenv
@@ -16,6 +16,7 @@ from flask import (
     session,
     url_for,
     send_from_directory,
+    jsonify,
 )
 from supabase import create_client, Client
 from werkzeug.utils import secure_filename
@@ -199,6 +200,9 @@ LEVEL_STATUS_COLORS = {
     "unknown": "#95a1b3",
 }
 
+# Horário oficial de Brasília (UTC-3)
+BRT_TZ = timezone(timedelta(hours=-3))
+
 
 def build_user_profile_payload(
     user_id: str,
@@ -268,14 +272,15 @@ def _parse_datetime(value):
         except Exception:
             return None
     if dt_value.tzinfo is None:
-        dt_value = dt_value.replace(tzinfo=timezone.utc)
+        # Assume registros sem timezone já estão em horário de Brasília
+        dt_value = dt_value.replace(tzinfo=BRT_TZ)
     return dt_value
 
 
 def _format_datetime_display(dt_value):
     if not dt_value:
         return None
-    return dt_value.astimezone(timezone.utc).strftime("%d/%m/%Y - %H:%M")
+    return dt_value.astimezone(BRT_TZ).strftime("%d/%m/%Y - %H:%M")
 
 
 def _should_display_level(raw) -> bool:
@@ -344,6 +349,9 @@ def fetch_generator_levels() -> list[dict]:
         return _get_mock_fuel_data()
 
     levels: list[dict] = []
+    now_utc = datetime.now(timezone.utc)
+    now_brt = now_utc.astimezone(BRT_TZ)
+    now_brt_display = now_brt.strftime("%d/%m/%Y - %H:%M")
     for row in rows:
         if not _should_display_level(row.get("exibeNivel")):
             continue
@@ -364,6 +372,17 @@ def fetch_generator_levels() -> list[dict]:
             autonomia_total = round(level_ratio * autonomia_base, 1)
 
         ultima_dt = _parse_datetime(row.get("ultimaAtualizacao"))
+        is_online = False
+        status_label = "offline"
+        ultima_diff_minutes = None
+        ultima_diff_display = None
+        if ultima_dt:
+            delta = now_utc - ultima_dt
+            if delta <= timedelta(minutes=2):
+                is_online = True
+                status_label = "online"
+            ultima_diff_minutes = round(delta.total_seconds() / 60.0, 1)
+            ultima_diff_display = f"{ultima_diff_minutes:.1f} min"
         location_value = estacao_meta.get("estacao")
         if not location_value and isinstance(row.get("estacao"), str):
             location_value = row.get("estacao")
@@ -386,6 +405,11 @@ def fetch_generator_levels() -> list[dict]:
                 # Normalize display string and remove any trailing 'UTC' label
                 "ultima_atualizacao_display": (lambda v: (v.replace(" UTC", "").replace("UTC", "").strip()) if v else None)(_format_datetime_display(ultima_dt) or row.get("ultimaAtualizacao")),
                 "ultima_atualizacao_iso": ultima_dt.isoformat() if ultima_dt else row.get("ultimaAtualizacao"),
+                "status_online": is_online,
+                "status_label": status_label,
+                "ultima_diff_minutes": ultima_diff_minutes,
+                "ultima_diff_display": ultima_diff_display,
+                "brasilia_now_display": now_brt_display,
             }
         )
 
@@ -666,6 +690,45 @@ def home():
         last_refresh=last_refresh,
         active_tab="home",
     )
+
+
+@app.route("/api/fuel-levels")
+def api_fuel_levels():
+    fuel_levels = fetch_generator_levels()
+    latest_dt = None
+    for item in fuel_levels:
+        dt_value = item.get("ultima_atualizacao_dt")
+        if not dt_value:
+            continue
+        if latest_dt is None or dt_value > latest_dt:
+            latest_dt = dt_value
+
+    payload = []
+    for item in fuel_levels:
+        payload.append(
+            {
+                "id": item.get("id"),
+                "nome": item.get("nome"),
+                "local": item.get("local"),
+                "nivel_percent": item.get("nivel_percent"),
+                "nivel_display": item.get("nivel_display"),
+                "nivel_status": item.get("nivel_status"),
+                "level_color": item.get("level_color"),
+                "is_critical_focus": item.get("is_critical_focus"),
+                "autonomia_display": item.get("autonomia_display"),
+                "ultima_atualizacao_display": item.get("ultima_atualizacao_display"),
+                "ultima_atualizacao_iso": item.get("ultima_atualizacao_iso"),
+                "status_online": item.get("status_online"),
+                "status_label": item.get("status_label"),
+                "ultima_diff_minutes": item.get("ultima_diff_minutes"),
+                "ultima_diff_display": item.get("ultima_diff_display"),
+                "brasilia_now_display": item.get("brasilia_now_display"),
+            }
+        )
+
+    last_refresh = _format_datetime_display(latest_dt)
+    brasilia_now = fuel_levels[0].get("brasilia_now_display") if fuel_levels else None
+    return jsonify({"items": payload, "last_refresh": last_refresh, "brasilia_now": brasilia_now})
 
 
 @app.route("/login", methods=["GET", "POST"])
