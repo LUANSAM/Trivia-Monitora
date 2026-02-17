@@ -656,7 +656,7 @@ def login_required(role: str | None = None):
             if role and user.get("role") != role:
                 if user.get("role") != "admin":
                     flash("Acesso não autorizado para este perfil.", "error")
-                    return redirect(url_for("dashboard"))
+                    return redirect(url_for("home"))
             return func(*args, **kwargs)
 
         return wrapper
