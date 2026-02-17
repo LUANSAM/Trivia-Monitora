@@ -19,7 +19,7 @@
                 <tr>
                     <th>Nome</th>
                     <th class="email-column">E-mail</th>
-                    <th>Áreas autorizadas</th>
+                    <th>Área</th>
                     <th>Autorizado</th>
                     <th class="created-column">Criado em</th>
                     <th>Ações</th>
@@ -77,8 +77,10 @@
                 <input type="text" id="editNome" name="nome" required>
             </label>
             
-            {% set can_edit_areas = current_user and current_user.email == 'luan.sampaio@triviatrens.com.br' %}
-            {% if can_edit_areas %}
+            {% set is_superadm = current_user and (current_user.get('role', '') | lower) == 'superadm' %}
+            {% set is_admin = current_user and (current_user.get('role', '') | lower) in ['admin', 'administrador'] %}
+            
+            {% if is_superadm %}
             <label>
                 <span>Empresa</span>
                 <select id="editEmpresa" name="empresa" required>
@@ -98,16 +100,22 @@
                     {% endfor %}
                 </select>
             </label>
+            {% endif %}
 
+            {% if is_admin or is_superadm %}
             <label>
                 <span>Perfil</span>
                 <select id="editRole" name="role">
-                    <option value="user">Usuário</option>
-                    <option value="admin">Admin</option>
+                    <option value="Usuário">Usuário</option>
+                    <option value="Administrador">Administrador</option>
+                    {% if is_superadm %}
+                    <option value="superAdm">SuperAdm</option>
+                    {% endif %}
                 </select>
             </label>
             {% endif %}
-            {% if not can_edit_areas %}
+            
+            {% if not is_superadm and not is_admin %}
             <label>
                 <span>Áreas autorizadas</span>
                 <div class="readonly-field" id="editAreasReadonly">-</div>
@@ -344,7 +352,7 @@ document.querySelectorAll('.btn-edit').forEach(btn => {
         }
         const roleField = document.getElementById('editRole');
         if (roleField) {
-            roleField.value = role || 'user';
+            roleField.value = role || 'Usuário';
         }
         
         openModal('editModal');

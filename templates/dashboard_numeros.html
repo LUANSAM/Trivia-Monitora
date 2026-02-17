@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+{% block title %}Números do App{% endblock %}
+
+{% block content %}
+<section class="card">
+    <header class="section-header">
+        <h2>Números do app</h2>
+        <p>Métricas gerais de usuários e acessos.</p>
+    </header>
+
+    <div style="margin-top: 16px; padding: 12px; background: rgba(255, 255, 255, 0.02); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08);">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+            <input 
+                type="checkbox" 
+                id="logAcessoCheckbox" 
+                {% if log_acesso_enabled %}checked{% endif %}
+                style="width: 18px; height: 18px; cursor: pointer;"
+            />
+            <span style="font-size: 0.95rem;">Registro de log de acessos</span>
+        </label>
+    </div>
+
+    <div class="stats-grid" style="margin-top: 12px;">
+        <article class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Número de usuários</span>
+            </div>
+            <strong class="stat-value">{{ total_usuarios }}</strong>
+        </article>
+        <article class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Quantidade de acessos</span>
+            </div>
+            <strong class="stat-value">{{ total_acessos }}</strong>
+        </article>
+    </div>
+</section>
+
+<section class="card">
+    <header class="section-header">
+        <h3>Usuários por área</h3>
+    </header>
+
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Área</th>
+                    <th>Total de usuários</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if area_labels %}
+                    {% for idx in range(area_labels|length) %}
+                    <tr>
+                        <td>{{ area_labels[idx] }}</td>
+                        <td>{{ area_values[idx] }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="2">Sem dados de áreas.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="card">
+    <header class="section-header">
+        <h3>Acessos por dia</h3>
+        <p>Fonte: tabela logAcessos, coluna created_at.</p>
+    </header>
+
+    <div style="position: relative; width: 100%; min-height: 320px;">
+        <canvas id="acessosPorDiaChart" aria-label="Gráfico de acessos por dia"></canvas>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Handle checkbox toggle
+        const checkbox = document.getElementById('logAcessoCheckbox');
+        if (checkbox) {
+            checkbox.addEventListener('change', async function () {
+                const isChecked = this.checked;
+                
+                try {
+                    const response = await fetch('/api/toggle-log-acesso', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ enabled: isChecked })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (!response.ok) {
+                        alert('Erro ao atualizar configuração: ' + (result.error || 'Erro desconhecido'));
+                        // Revert checkbox state
+                        this.checked = !isChecked;
+                    }
+                } catch (error) {
+                    console.error('Erro ao atualizar configuração:', error);
+                    alert('Erro ao atualizar configuração.');
+                    // Revert checkbox state
+                    this.checked = !isChecked;
+                }
+            });
+        }
+
+        // Chart setup
+        const labels = {{ acesso_labels | tojson }};
+        const values = {{ acesso_values | tojson }};
+
+        const canvas = document.getElementById('acessosPorDiaChart');
+        if (!canvas) return;
+
+        new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Acessos por dia',
+                        data: values,
+                        borderColor: '#4f83ff',
+                        backgroundColor: 'rgba(79, 131, 255, 0.2)',
+                        fill: true,
+                        tension: 0.25,
+                        pointRadius: 3,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

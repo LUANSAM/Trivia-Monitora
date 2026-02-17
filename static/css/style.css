@@ -1666,6 +1666,126 @@ table td:nth-child(7) {
     color: #0c1b2a;
 }
 
+.operacao-card {
+    border-color: rgba(30, 58, 138, 0.35);
+}
+
+.operacao-card__icon-wrap {
+    min-width: 78px;
+    
+}
+
+.operacao-card__icon {
+    width: 72px;
+    height: 72px;
+    border: 2px solid #0c1b2a;
+    border-radius: 10px;
+    color: #000;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.operacao-card__icon svg {
+    width: 52px;
+    height: 52px;
+}
+
+.operacao-card__local {
+    margin: 0;
+    font-style: italic;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.operacao-card__estado-line {
+    margin-top: 2px;
+    font-weight: 400;
+}
+
+.operacao-card__estado {
+    font-weight: 800;
+}
+
+.operacao-card__estado.is-on {
+    color: #0f9b70;
+}
+
+.operacao-card__estado.is-off {
+    color: #d6253a;
+}
+
+.operacao-card__actions {
+    margin-top: 2px;
+    min-height: 22px;
+}
+
+.operacao-card__corner {
+    position: absolute;
+    top: 2px;
+    right: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    z-index: 4;
+}
+
+.operacao-card__corner .fuel-card__updated-badge {
+    position: static;
+    padding: 0;
+}
+
+.operacao-card__corner-action {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 22px;
+    transform: translateX(-20px); /* aumenta para ir mais à esquerda */
+}
+
+.operacao-toggle-btn {
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: #0f9b70;
+    width: 60px;
+    height: 60px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.operacao-toggle-btn svg {
+    width: 60px;
+    height: 60px;
+}
+
+.operacao-toggle-btn:hover {
+    transform: scale(1.08);
+}
+
+.operacao-toggle-btn--on {
+    color: #d6253a;
+}
+
+.operacao-toggle-btn--off {
+    color: #0f9b70;
+}
+
+.operacao-toggle-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.operacao-card__offline-flag {
+    margin-right: 0;
+    transform: translateY(12px);
+}
+
 .semi-gauge {
     position: relative;
     width: 160px;

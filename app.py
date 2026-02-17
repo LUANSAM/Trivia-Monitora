@@ -525,6 +525,91 @@ def _get_mock_fuel_data() -> list[dict]:
     return items
 
 
+def fetch_operacao_elevadores() -> list[dict]:
+    client = get_supabase_service() or require_supabase()
+    now_utc = datetime.now(timezone.utc)
+
+    try:
+        response = (
+            client.table("equipamentos")
+            .select("id, nome, tipo, local, estacao, ultimaAtualizacao, estado")
+            .eq("tipo", "Elevador")
+            .order("nome", desc=False)
+            .execute()
+        )
+        rows = response.data or []
+    except Exception as exc:
+        print(f"[WARN] Erro ao consultar elevadores para operação: {exc}", flush=True)
+        return []
+
+    equipamentos: list[dict] = []
+    for row in rows:
+        ultima_dt = _parse_datetime(row.get("ultimaAtualizacao"))
+        is_online = False
+        ultima_diff_minutes = None
+        if ultima_dt:
+            delta = now_utc - ultima_dt
+            is_online = delta <= timedelta(minutes=2)
+            ultima_diff_minutes = round(delta.total_seconds() / 60.0, 1)
+
+        local_data = _coerce_mapping(row.get("local"))
+        estacao_data = _coerce_mapping(row.get("estacao"))
+        local_display = None
+        if isinstance(estacao_data, dict):
+            local_display = estacao_data.get("estacao")
+        if isinstance(local_data, dict):
+            local_display = local_display or (
+                local_data.get("estacao")
+                or local_data.get("nome")
+                or local_data.get("codigo")
+            )
+        if not local_display and isinstance(row.get("local"), str):
+            local_display = row.get("local")
+        if not local_display and isinstance(row.get("estacao"), str):
+            local_display = row.get("estacao")
+        local_display = str(local_display).strip() if local_display else ""
+
+        endereco_parts = []
+        if isinstance(local_data, dict):
+            for key in ("rua", "numero", "bairro", "cidade", "cep"):
+                value = local_data.get(key)
+                if value:
+                    endereco_parts.append(str(value).strip())
+        endereco_text = ", ".join(endereco_parts).strip() if endereco_parts else local_display
+        maps_url = (
+            f"https://www.google.com/maps/search/?api=1&query={quote_plus(endereco_text)}"
+            if endereco_text
+            else None
+        )
+
+        estado_raw = row.get("estado")
+        if isinstance(estado_raw, bool):
+            estado_ativo = estado_raw
+        elif isinstance(estado_raw, str):
+            estado_ativo = estado_raw.strip().lower() in {"true", "1", "t", "yes", "y"}
+        elif isinstance(estado_raw, (int, float)):
+            estado_ativo = int(estado_raw) == 1
+        else:
+            estado_ativo = False
+
+        equipamentos.append(
+            {
+                "id": row.get("id"),
+                "nome": row.get("nome") or "Elevador",
+                "local": local_display,
+                "maps_url": maps_url,
+                "status_online": is_online,
+                "status_label": "online" if is_online else "offline",
+                "ultima_diff_minutes": ultima_diff_minutes,
+                "ultima_atualizacao_display": _format_datetime_display(ultima_dt) or row.get("ultimaAtualizacao"),
+                "estado_ativo": estado_ativo,
+                "estado_label": "ATIVADO" if estado_ativo else "DESATIVADO",
+            }
+        )
+
+    return equipamentos
+
+
 def _normalize_areas(raw) -> list[str]:
     """Ensure we always work with a clean list of area strings."""
     if raw is None:
@@ -630,7 +715,12 @@ def refresh_session_role() -> None:
             .execute()
         )
         data = profile.data or {}
-        resolved_role = data.get("role") or ("admin" if data.get("autorizado") else "user")
+        # Preserva role do banco se existir e não for vazio; senão usa fallback baseado em autorizado
+        role_from_db = data.get("role")
+        if role_from_db and str(role_from_db).strip():
+            resolved_role = str(role_from_db).strip()
+        else:
+            resolved_role = "admin" if data.get("autorizado") else "user"
         if resolved_role != user.get("role"):
             session["user"]["role"] = resolved_role
         if data.get("nome") and data.get("nome") != user.get("nome"):
@@ -653,8 +743,16 @@ def login_required(role: str | None = None):
                 flash("Faça login para continuar.", "error")
                 return redirect(url_for("login"))
             refresh_session_role()
-            if role and user.get("role") != role:
-                if user.get("role") != "admin":
+            if role:
+                current_role = (user.get("role") or "").strip().lower()
+                required_role = (role or "").strip().lower()
+                admin_like_roles = {"admin", "administrador", "superadm"}
+
+                if required_role == "admin":
+                    if current_role not in admin_like_roles:
+                        flash("Acesso não autorizado para este perfil.", "error")
+                        return redirect(url_for("home"))
+                elif current_role != required_role:
                     flash("Acesso não autorizado para este perfil.", "error")
                     return redirect(url_for("home"))
             return func(*args, **kwargs)
@@ -701,6 +799,38 @@ def serve_public_asset(filename: str):
 @app.route("/")
 def home():
     print("[DEBUG] Acessando rota /home (fuel levels)", flush=True)
+    
+    # Check if access logging is enabled
+    client = get_supabase_service() or require_supabase()
+    try:
+        controle_rows = (
+            client.table("controle")
+            .select("valor")
+            .eq("controle", "logAcesso")
+            .execute()
+            .data
+            or []
+        )
+        log_acesso_enabled = controle_rows[0].get("valor") == True if controle_rows else False
+        
+        if log_acesso_enabled:
+            session_user = session.get("user") or {}
+            user_email = session_user.get("email") or None
+            user_nome = session_user.get("nome") or None
+            is_logged = bool(user_email)
+            
+            log_data = {
+                "logado": is_logged
+            }
+            if is_logged:
+                log_data["email"] = user_email
+                log_data["nome"] = user_nome
+            
+            client.table("logAcessos").insert(log_data).execute()
+            print(f"[DEBUG] Log de acesso registrado: logado={is_logged}", flush=True)
+    except Exception as e:
+        print(f"[WARN] Erro ao registrar log de acesso: {e}", flush=True)
+    
     fuel_levels = fetch_generator_levels()
     print(f"[DEBUG] Carregados {len(fuel_levels)} geradores", flush=True)
     latest_dt = None
@@ -719,6 +849,84 @@ def home():
         last_refresh=last_refresh,
         active_tab="home",
     )
+
+
+@app.route("/operacao")
+@login_required()
+def operacao():
+    equipamentos = fetch_operacao_elevadores()
+    return render_template(
+        "operacao.html",
+        equipamentos=equipamentos,
+        active_tab="operacao",
+    )
+
+
+@app.route("/api/operacao/equipamentos")
+@login_required()
+def api_operacao_equipamentos():
+    equipamentos = fetch_operacao_elevadores()
+    return jsonify({"items": equipamentos})
+
+
+@app.route("/api/operacao/equipamentos/<string:equipamento_id>/estado", methods=["POST"])
+@login_required()
+def toggle_operacao_estado(equipamento_id: str):
+    client = get_supabase_service() or require_supabase()
+
+    try:
+        row = (
+            client.table("equipamentos")
+            .select("id, estado, ultimaAtualizacao")
+            .eq("id", equipamento_id)
+            .single()
+            .execute()
+            .data
+        )
+    except Exception as exc:
+        return jsonify({"success": False, "error": f"Equipamento não encontrado: {exc}"}), 404
+
+    ultima_dt = _parse_datetime((row or {}).get("ultimaAtualizacao"))
+    is_online = False
+    if ultima_dt:
+        is_online = (datetime.now(timezone.utc) - ultima_dt) <= timedelta(minutes=2)
+    if not is_online:
+        return jsonify({"success": False, "error": "Equipamento offline. Estado não pode ser alterado."}), 400
+
+    payload = request.get_json(silent=True) or {}
+    requested_state = payload.get("estado")
+
+    current_state_raw = (row or {}).get("estado")
+    if isinstance(current_state_raw, bool):
+        current_state = current_state_raw
+    elif isinstance(current_state_raw, str):
+        current_state = current_state_raw.strip().lower() in {"true", "1", "t", "yes", "y"}
+    elif isinstance(current_state_raw, (int, float)):
+        current_state = int(current_state_raw) == 1
+    else:
+        current_state = False
+
+    if isinstance(requested_state, bool):
+        new_state = requested_state
+    elif isinstance(requested_state, str):
+        new_state = requested_state.strip().lower() in {"true", "1", "t", "yes", "y"}
+    elif isinstance(requested_state, (int, float)):
+        new_state = int(requested_state) == 1
+    else:
+        new_state = not current_state
+
+    try:
+        client.table("equipamentos").update({"estado": new_state}).eq("id", equipamento_id).execute()
+        return jsonify(
+            {
+                "success": True,
+                "id": equipamento_id,
+                "estado": new_state,
+                "estado_label": "ATIVADO" if new_state else "DESATIVADO",
+            }
+        )
+    except Exception as exc:
+        return jsonify({"success": False, "error": f"Falha ao atualizar estado: {exc}"}), 500
 
 
 @app.route("/api/fuel-levels")
@@ -802,7 +1010,12 @@ def login():
             flash(f"Não foi possível autenticar: {exc}", "error")
             return redirect(url_for("login"))
 
-        role = profile_data.get("role") or ("admin" if profile_data.get("autorizado") else "user")
+        # Preserva role do banco se existir e não for vazio; senão usa fallback baseado em autorizado
+        role_from_db = profile_data.get("role")
+        if role_from_db and str(role_from_db).strip():
+            role = str(role_from_db).strip()
+        else:
+            role = "admin" if profile_data.get("autorizado") else "user"
         session["user"] = {
             "id": user.id,
             "email": user.email,
@@ -934,19 +1147,176 @@ def logout():
 @app.route("/admin/usuarios")
 @login_required("admin")
 def lista_usuarios():
-    client = require_supabase()
-    user = session.get("user") or {}
+    client = get_supabase_service() or require_supabase()
+    session_user = session.get("user") or {}
+    current_role = (session_user.get("role") or "").strip().lower()
+    empresa_filter = (session_user.get("empresa") or "").strip()
+    area_filter = (session_user.get("area") or "").strip()
+
     query = client.table("usuarios").select("id, nome, email, empresa, area, autorizado, created_at, role")
+
+    if current_role in {"admin", "administrador"}:
+        if empresa_filter:
+            query = query.eq("empresa", empresa_filter)
+        if area_filter:
+            query = query.eq("area", area_filter)
 
     data = (
         query
-        .order("created_at", desc=True)
-        .limit(200)
+        .order("nome", desc=False)
+        .limit(300)
         .execute()
         .data
         or []
     )
-    return render_template("usuarios_list.html", usuarios=data, areas=REGISTER_AREAS)
+    def _matches_admin_scope(item: dict) -> bool:
+        if current_role not in {"admin", "administrador"}:
+            return True
+        
+        # Administrador não pode ver usuários com role superAdm
+        item_role = (item.get("role") or "").strip().lower()
+        if item_role == "superadm":
+            return False
+        
+        item_empresa = (item.get("empresa") or "").strip()
+        item_area = (item.get("area") or "").strip()
+        if empresa_filter and item_empresa.lower() != empresa_filter.lower():
+            return False
+        if area_filter and item_area.lower() != area_filter.lower():
+            return False
+        return True
+
+    usuarios = []
+    for item in data:
+        if not _matches_admin_scope(item):
+            continue
+        usuarios.append(item)
+    return render_template("usuarios_list.html", usuarios=usuarios, areas=REGISTER_AREAS)
+
+
+@app.route("/admin/numeros")
+@login_required("admin")
+def dashboard_numeros():
+    session_user = session.get("user") or {}
+    current_role = (session_user.get("role") or "").strip().lower()
+    if current_role != "superadm":
+        flash("Acesso não autorizado para este perfil.", "error")
+        return redirect(url_for("home"))
+
+    client = get_supabase_service() or require_supabase()
+
+    # Fetch control value for logAcesso
+    log_acesso_enabled = False
+    try:
+        controle_rows = (
+            client.table("controle")
+            .select("valor")
+            .eq("controle", "logAcesso")
+            .execute()
+            .data
+            or []
+        )
+        if controle_rows:
+            log_acesso_enabled = controle_rows[0].get("valor") == True
+    except Exception as e:
+        print(f"[WARN] Erro ao buscar controle logAcesso: {e}", flush=True)
+
+    usuarios_rows = (
+        client.table("usuarios")
+        .select("id, area")
+        .order("id", desc=False)
+        .limit(5000)
+        .execute()
+        .data
+        or []
+    )
+
+    total_usuarios = len(usuarios_rows)
+    usuarios_por_area: dict[str, int] = {}
+    for user_row in usuarios_rows:
+        area_value = (user_row.get("area") or "Sem área").strip() or "Sem área"
+        usuarios_por_area[area_value] = usuarios_por_area.get(area_value, 0) + 1
+
+    area_labels = sorted(usuarios_por_area.keys(), key=lambda value: value.lower())
+    area_values = [usuarios_por_area[label] for label in area_labels]
+
+    logs_rows = (
+        client.table("logAcessos")
+        .select("created_at")
+        .order("created_at", desc=False)
+        .limit(10000)
+        .execute()
+        .data
+        or []
+    )
+
+    acessos_por_dia: dict[str, int] = {}
+    for log_row in logs_rows:
+        created_at = log_row.get("created_at")
+        dt_value = _parse_datetime(created_at)
+        if not dt_value:
+            continue
+        day_key = dt_value.astimezone(BRT_TZ).strftime("%Y-%m-%d")
+        acessos_por_dia[day_key] = acessos_por_dia.get(day_key, 0) + 1
+
+    day_keys_sorted = sorted(acessos_por_dia.keys())
+    acesso_labels = []
+    acesso_values = []
+    for day_key in day_keys_sorted:
+        day_dt = datetime.strptime(day_key, "%Y-%m-%d")
+        acesso_labels.append(day_dt.strftime("%d/%m"))
+        acesso_values.append(acessos_por_dia[day_key])
+
+    return render_template(
+        "dashboard_numeros.html",
+        total_usuarios=total_usuarios,
+        area_labels=area_labels,
+        area_values=area_values,
+        total_acessos=sum(acesso_values),
+        acesso_labels=acesso_labels,
+        acesso_values=acesso_values,
+        log_acesso_enabled=log_acesso_enabled,
+    )
+
+
+@app.route("/api/toggle-log-acesso", methods=["POST"])
+@login_required("admin")
+def toggle_log_acesso():
+    """Toggle the logAcesso control value"""
+    session_user = session.get("user") or {}
+    current_role = (session_user.get("role") or "").strip().lower()
+    if current_role != "superadm":
+        return jsonify({"success": False, "error": "Acesso não autorizado"}), 403
+
+    try:
+        data = request.get_json() or {}
+        enabled = data.get("enabled", False)
+        
+        client = get_supabase_service() or require_supabase()
+        
+        # Check if control record exists
+        controle_rows = (
+            client.table("controle")
+            .select("id")
+            .eq("controle", "logAcesso")
+            .execute()
+            .data
+            or []
+        )
+        
+        if controle_rows:
+            # Update existing record
+            client.table("controle").update({"valor": enabled}).eq("controle", "logAcesso").execute()
+        else:
+            # Insert new record
+            client.table("controle").insert({"controle": "logAcesso", "valor": enabled}).execute()
+        
+        print(f"[DEBUG] Log de acesso {'ativado' if enabled else 'desativado'}", flush=True)
+        return jsonify({"success": True, "enabled": enabled}), 200
+        
+    except Exception as e:
+        print(f"[ERROR] Erro ao atualizar controle logAcesso: {e}", flush=True)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/admin/usuarios/<string:user_id>/status", methods=["POST"])
@@ -976,19 +1346,30 @@ def editar_usuario(user_id: str):
         if not nome:
             return {"error": "Nome é obrigatório"}, 400
         
+        current_user = session.get("user") or {}
+        current_role = (current_user.get("role") or "").strip().lower()
+        
         update_payload = {
             "nome": nome,
-            "empresa": empresa,
         }
 
-        # Define a área
-        current_user = session.get("user") or {}
-        if area:
-            update_payload["area"] = area
+        # Apenas superadm pode editar empresa e área
+        if current_role == "superadm":
+            if empresa:
+                update_payload["empresa"] = empresa
+            if area:
+                update_payload["area"] = area
 
-        if current_user.get("email") == "luan.sampaio@triviatrens.com.br" and role:
-            if role not in {"admin", "user"}:
-                return {"error": "Role inválido"}, 400
+        # Administrador e superadm podem editar role
+        if current_role in {"superadm", "admin", "administrador"} and role:
+            # Administrador só pode atribuir Usuário ou Administrador
+            if current_role in {"admin", "administrador"}:
+                if role not in {"Usuário", "Administrador"}:
+                    return {"error": "Role inválido"}, 400
+            # superAdm pode atribuir qualquer role incluindo superAdm
+            elif current_role == "superadm":
+                if role not in {"Usuário", "Administrador", "superAdm"}:
+                    return {"error": "Role inválido"}, 400
             update_payload["role"] = role
 
         client.table("usuarios").update(update_payload).eq("id", user_id).execute()

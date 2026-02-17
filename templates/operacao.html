@@ -1,0 +1,221 @@
+{% extends 'base.html' %}
+{% block title %}Operação · Trivia Monitora{% endblock %}
+
+{% block content %}
+<section class="fuel-overview fuel-overview--minimal">
+    {% if equipamentos %}
+        <div class="fuel-grid fuel-grid--minimal" data-operacao-grid>
+            {% for equipamento in equipamentos %}
+                <article class="fuel-card operacao-card" data-equipamento-id="{{ equipamento.id }}">
+                    <div class="fuel-card__body fuel-card__body--compact">
+                        <div class="fuel-card__gauge-wrapper operacao-card__icon-wrap" aria-hidden="true">
+                            <div class="operacao-card__icon">
+                                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="3" width="42" height="42" rx="4"></rect>
+                                    <rect x="8" y="14" width="12" height="18" rx="1"></rect>
+                                    <circle cx="14" cy="10" r="3"></circle>
+                                    <polygon points="31,9 38,19 24,19" fill="currentColor" stroke="none"></polygon>
+                                    <polygon points="31,39 24,29 38,29" fill="currentColor" stroke="none"></polygon>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <div class="fuel-card__body-meta">
+                            <h3>{{ equipamento.local }}</h3>
+                            <p class="fuel-card__capacity operacao-card__local">{{ equipamento.nome }}</p>
+                            <p class="fuel-card__stat operacao-card__estado-line">
+                                Estado:
+                                <span class="operacao-card__estado {% if equipamento.estado_ativo %}is-on{% else %}is-off{% endif %}" data-estado-label>
+                                    {{ equipamento.estado_label }}
+                                </span>
+                            </p>
+                            <div class="fuel-card__status-row operacao-card__actions">
+                                {% if session.get('user') and equipamento.maps_url %}
+                                <a href="{{ equipamento.maps_url }}" target="_blank" rel="noopener noreferrer" class="fuel-card__gps" title="Abrir no mapa">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-map-pin">
+                                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                        <circle cx="12" cy="10" r="3"></circle>
+                                    </svg>
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% set minutes = equipamento.ultima_diff_minutes %}
+                    <div class="operacao-card__corner">
+                        <div class="fuel-card__updated-badge updated--black">
+                            {% if minutes is not none %}
+                                Atualizado à {{ minutes|round(0)|int }} minutos
+                            {% else %}
+                                Atualizado à —
+                            {% endif %}
+                        </div>
+                        <div class="operacao-card__corner-action">
+                            {% if equipamento.status_online %}
+                                <button
+                                    type="button"
+                                    class="operacao-toggle-btn {% if equipamento.estado_ativo %}operacao-toggle-btn--on{% else %}operacao-toggle-btn--off{% endif %}"
+                                    data-toggle-estado
+                                    data-current-estado="{{ 'true' if equipamento.estado_ativo else 'false' }}"
+                                    title="{{ 'Desligar' if equipamento.estado_ativo else 'Ligar' }}"
+                                    aria-label="{{ 'Desligar' if equipamento.estado_ativo else 'Ligar' }}"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M12 2v10"></path>
+                                        <path d="M6.2 6.2a8 8 0 1 0 11.3 0"></path>
+                                    </svg>
+                                </button>
+                            {% else %}
+                                <div class="fuel-card__status fuel-card__status--offline operacao-card__offline-flag">
+                                    <span class="fuel-card__status-dot"></span>offline
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </article>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state card">
+            <h3>Sem elevadores disponíveis</h3>
+            <p>Nenhum equipamento do tipo Elevador foi encontrado.</p>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const grid = document.querySelector('[data-operacao-grid]');
+    if (!grid) return;
+
+    const escapeHtml = (value) => {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    };
+
+    const cardHtml = (item) => {
+        const isOnline = Boolean(item.status_online);
+        const isOn = Boolean(item.estado_ativo);
+        const minutes = item.ultima_diff_minutes;
+        const minutesText = (minutes !== null && minutes !== undefined) ? `Atualizado à ${Math.round(Number(minutes))} minutos` : 'Atualizado à —';
+
+        const toggleOrOffline = isOnline
+            ? `<button type="button" class="operacao-toggle-btn ${isOn ? 'operacao-toggle-btn--on' : 'operacao-toggle-btn--off'}" data-toggle-estado data-current-estado="${isOn}" title="${isOn ? 'Desligar' : 'Ligar'}" aria-label="${isOn ? 'Desligar' : 'Ligar'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v10"></path><path d="M6.2 6.2a8 8 0 1 0 11.3 0"></path></svg></button>`
+            : `<div class="fuel-card__status fuel-card__status--offline operacao-card__offline-flag"><span class="fuel-card__status-dot"></span>offline</div>`;
+
+        const gpsHtml = item.maps_url
+            ? `<a href="${escapeHtml(item.maps_url)}" target="_blank" rel="noopener noreferrer" class="fuel-card__gps" title="Abrir no mapa"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-map-pin"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg></a>`
+            : '';
+
+        return `
+            <article class="fuel-card operacao-card" data-equipamento-id="${escapeHtml(item.id)}">
+                <div class="fuel-card__body fuel-card__body--compact">
+                    <div class="fuel-card__gauge-wrapper operacao-card__icon-wrap" aria-hidden="true">
+                        <div class="operacao-card__icon">
+                            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="3" width="42" height="42" rx="4"></rect>
+                                <rect x="8" y="14" width="12" height="18" rx="1"></rect>
+                                <circle cx="14" cy="10" r="3"></circle>
+                                <polygon points="31,9 38,19 24,19" fill="currentColor" stroke="none"></polygon>
+                                <polygon points="31,39 24,29 38,29" fill="currentColor" stroke="none"></polygon>
+                            </svg>
+                        </div>
+                    </div>
+
+                    <div class="fuel-card__body-meta">
+                        <h3>${escapeHtml(item.local || '')}</h3>
+                        <p class="fuel-card__capacity operacao-card__local">${escapeHtml(item.nome || 'Elevador')}</p>
+                        <p class="fuel-card__stat operacao-card__estado-line">Estado: <span class="operacao-card__estado ${isOn ? 'is-on' : 'is-off'}" data-estado-label>${escapeHtml(item.estado_label || (isOn ? 'ATIVADO' : 'DESATIVADO'))}</span></p>
+                        <div class="fuel-card__status-row operacao-card__actions">${gpsHtml}</div>
+                    </div>
+                </div>
+                <div class="operacao-card__corner">
+                    <div class="fuel-card__updated-badge updated--black">${minutesText}</div>
+                    <div class="operacao-card__corner-action">${toggleOrOffline}</div>
+                </div>
+            </article>
+        `;
+    };
+
+    const renderItems = (items) => {
+        const html = (items || []).map(cardHtml).join('');
+        grid.innerHTML = html;
+    };
+
+    grid.addEventListener('click', async function (event) {
+        const button = event.target.closest('[data-toggle-estado]');
+        if (!button) return;
+
+        const card = button.closest('[data-equipamento-id]');
+        if (!card) return;
+
+        const equipamentoId = card.getAttribute('data-equipamento-id');
+        const currentState = button.getAttribute('data-current-estado') === 'true';
+        const nextState = !currentState;
+        const estadoLabel = card.querySelector('[data-estado-label]');
+
+        button.disabled = true;
+
+        try {
+            const response = await fetch(`/api/operacao/equipamentos/${equipamentoId}/estado`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ estado: nextState })
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Erro ao atualizar estado');
+            }
+
+            button.setAttribute('data-current-estado', String(data.estado));
+            button.classList.toggle('operacao-toggle-btn--on', !!data.estado);
+            button.classList.toggle('operacao-toggle-btn--off', !data.estado);
+            button.setAttribute('title', data.estado ? 'Desligar' : 'Ligar');
+            button.setAttribute('aria-label', data.estado ? 'Desligar' : 'Ligar');
+
+            if (estadoLabel) {
+                estadoLabel.textContent = data.estado_label;
+                estadoLabel.classList.toggle('is-on', !!data.estado);
+                estadoLabel.classList.toggle('is-off', !data.estado);
+            }
+        } catch (error) {
+            if (window.showToast) {
+                window.showToast(error.message || 'Falha ao atualizar estado.', 'error');
+            } else {
+                alert(error.message || 'Falha ao atualizar estado.');
+            }
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    const fetchAndRender = async () => {
+        try {
+            const response = await fetch('/api/operacao/equipamentos', {
+                cache: 'no-store',
+                credentials: 'same-origin',
+            });
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data && Array.isArray(data.items)) {
+                renderItems(data.items);
+            }
+        } catch (error) {
+            console.warn('Falha ao atualizar operação', error);
+        }
+    };
+
+    fetchAndRender();
+    setInterval(fetchAndRender, 5000);
+});
+</script>
+{% endblock %}
