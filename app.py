@@ -938,11 +938,6 @@ def lista_usuarios():
     user = session.get("user") or {}
     query = client.table("usuarios").select("id, nome, email, empresa, area, autorizado, created_at, role")
 
-    if user.get("email") != "luan.sampaio@triviatrens.com.br":
-        if user.get("empresa"):
-            query = query.eq("empresa", user["empresa"])
-        query = apply_area_filter(query, user)
-
     data = (
         query
         .order("created_at", desc=True)
