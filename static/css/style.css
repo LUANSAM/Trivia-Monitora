@@ -253,6 +253,10 @@ body.sidenav-open {
     align-items: stretch;
 }
 
+.app-nav .nav-row .nav-link:not(.nav-link--square) {
+    min-height: 106px;
+}
+
 .app-nav .nav-link {
     display: flex;
     align-items: center;
