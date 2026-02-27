@@ -28,8 +28,24 @@ body {
     min-height: 100vh;
 }
 
+body[data-section="geradores"] {
+    --section-accent: #1ec592;
+    --section-glow-rgb: 30, 197, 146;
+}
+
+body[data-section="locomotivas"] {
+    --section-accent: #ff8a3c;
+    --section-glow-rgb: 255, 138, 60;
+}
+
+body[data-section="reservatorios"] {
+    --section-accent: #f6c343;
+    --section-glow-rgb: 246, 195, 67;
+}
+
 .app-shell {
     min-height: 100vh;
+    --folder-inset: 18px;
 }
 
 .app-header {
@@ -109,6 +125,145 @@ body {
     width: auto;
     object-fit: contain;
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
+}
+
+.section-frame {
+    position: relative;
+    margin: 0 var(--folder-inset);
+    --tab-w: 172px;
+    --tab-overlap: 4px;
+    --join-r: 10px;
+    --tabs-pad-x: 18px;
+    --frame-radius: 12px;
+    --active-start: var(--tabs-pad-x);
+    --active-end: calc(var(--tabs-pad-x) + var(--tab-w));
+}
+
+.section-frame::before {
+    content: none;
+}
+
+.section-frame.section-frame--geradores {
+    --active-start: var(--tabs-pad-x);
+    --active-end: calc(var(--tabs-pad-x) + var(--tab-w));
+}
+
+.section-frame.section-frame--locomotivas {
+    --active-start: calc(var(--tabs-pad-x) + var(--tab-w) - var(--tab-overlap));
+    --active-end: calc(var(--tabs-pad-x) + var(--tab-w) * 2 - var(--tab-overlap));
+}
+
+.section-frame.section-frame--reservatorios {
+    --active-start: calc(var(--tabs-pad-x) + var(--tab-w) * 2 - var(--tab-overlap) * 2);
+    --active-end: calc(var(--tabs-pad-x) + var(--tab-w) * 3 - var(--tab-overlap) * 2);
+}
+
+.section-tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 0;
+    padding: 10px var(--tabs-pad-x) 0;
+    margin: 0;
+    background: var(--bg-dark);
+    position: relative;
+    z-index: 3;
+}
+
+.section-tabs::before,
+.section-tabs::after {
+    content: none;
+}
+
+.section-tabs::before {
+    left: auto;
+    width: auto;
+}
+
+.section-tabs::after {
+    right: auto;
+    left: auto;
+}
+
+.section-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 172px;
+    min-width: 172px;
+    height: 42px;
+    padding: 0 14px;
+    border: 2px solid var(--section-accent, #1ec592);
+    border-bottom-color: rgba(0, 0, 0, 0.45);
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    background: var(--bg-dark);
+    color: rgba(219, 229, 244, 0.78);
+    text-decoration: none;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+    transform: translateY(4px);
+    z-index: 2;
+}
+
+.section-tab + .section-tab {
+    margin-left: -4px;
+}
+
+.section-tab:hover {
+    color: #dbe5f4;
+}
+
+.section-tab.is-active {
+    transform: translateY(0);
+    z-index: 6;
+    margin-bottom: -2px;
+    color: var(--section-accent, #1ec592);
+    border-color: var(--section-accent, #1ec592);
+    border-bottom-color: var(--bg-dark);
+    box-shadow: 0 0 0 1px var(--section-accent, #1ec592), 0 10px 22px rgba(0, 0, 0, 0.4);
+}
+
+.section-tab.is-active::before,
+.section-tab.is-active::after {
+    content: none;
+}
+
+.section-tab.is-active::before {
+    left: auto;
+    background: none;
+}
+
+.section-tab.is-active::after {
+    right: auto;
+    background: none;
+}
+
+.section-tab--geradores.is-active {
+    color: var(--section-accent, #1ec592);
+}
+
+.section-tab--locomotivas.is-active {
+    color: var(--section-accent, #1ec592);
+}
+
+.section-tab--reservatorios.is-active {
+    color: var(--section-accent, #1ec592);
+}
+
+.section-tab:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
+.section-placeholder-card h2 {
+    margin-bottom: 8px;
+}
+
+.section-placeholder-card p {
+    color: var(--text-muted);
 }
 
 .sidenav-overlay {
@@ -422,7 +577,37 @@ body.sidenav-open {
 .app-main {
     padding: 32px;
     max-width: 100%;
-    margin: 0 auto;
+    margin: 0 var(--folder-inset) 0;
+    border: 2px solid var(--section-accent, #1ec592);
+    border-top: none;
+    border-radius: 12px 12px 12px 12px;
+    min-height: calc(100vh - 120px);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25) inset, 0 0 18px rgba(var(--section-glow-rgb, 30, 197, 146), 0.22);
+}
+
+.app-main.app-main--sectioned {
+    position: relative;
+    z-index: 2;
+    margin: 0;
+    border: none;
+    border-radius: 12px;
+    box-shadow: none;
+}
+
+body[data-endpoint="operacao"] .app-main,
+body[data-endpoint="dashboard_numeros"] .app-main,
+body[data-endpoint="lista_usuarios"] .app-main {
+    border: none;
+    box-shadow: none;
+}
+
+.section-frame.section-frame--geradores .app-main.app-main--sectioned,
+.section-frame.section-frame--locomotivas .app-main.app-main--sectioned,
+.section-frame.section-frame--reservatorios .app-main.app-main--sectioned {
+    margin: 0 8px 14px;
+    border: 2px solid var(--section-accent, #1ec592);
+    border-radius: 12px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25) inset, 0 0 18px rgba(var(--section-glow-rgb, 30, 197, 146), 0.24);
 }
 
 .card {
@@ -1428,8 +1613,45 @@ table td:nth-child(7) {
 }
 
 @media (max-width: 768px) {
+    .section-tabs {
+        padding: 8px 14px 0;
+        gap: 0;
+        margin: 0;
+        --tab-w: 150px;
+        --tab-overlap: 3px;
+        --tabs-pad-x: 14px;
+    }
+    .section-frame {
+        margin: 0 10px;
+        --tab-w: 150px;
+        --tab-overlap: 3px;
+        --tabs-pad-x: 14px;
+    }
+    .section-frame::before {
+        content: none;
+    }
+    .section-tab {
+        width: 150px;
+        min-width: 138px;
+        height: 38px;
+        padding: 0 14px;
+        font-size: 0.92rem;
+    }
+    .section-tab + .section-tab {
+        margin-left: -3px;
+    }
     .app-main {
         padding: 20px;
+        min-height: calc(100vh - 110px);
+        margin: 0 10px 0;
+    }
+    .app-main.app-main--sectioned {
+        margin: 0;
+    }
+    .section-frame.section-frame--geradores .app-main.app-main--sectioned,
+    .section-frame.section-frame--locomotivas .app-main.app-main--sectioned,
+    .section-frame.section-frame--reservatorios .app-main.app-main--sectioned {
+        margin: 0 6px 10px;
     }
     .hero-card {
         flex-direction: column;

@@ -84,88 +84,14 @@ supabase_service: Client | None = None
 #     except Exception:
 #         supabase_service = None
 
-# Opções para os dropdowns de cadastro de veículos
-VEICULO_TIPOS = [
-    {"id": "automovel", "label": "Automóvel"},
-    {"id": "caminhonete", "label": "Caminhonete"},
-    {"id": "suv", "label": "SUV"},
-    {"id": "van", "label": "Van"},
-    {"id": "caminhao", "label": "Caminhão"},
-    {"id": "onibus", "label": "Ônibus"},
-    {"id": "moto", "label": "Moto"},
+
+LOCOMOTIVA_COMBUSTIVEIS = [
+    {"id": "diesel_s10", "label": "Diesel S10"},
+    {"id": "diesel_s500", "label": "Diesel S500"},
 ]
 
-VEICULO_COMBUSTIVEIS = [
-    {"id": "gasolina", "label": "Gasolina"},
-    {"id": "etanol", "label": "Etanol"},
-    {"id": "flex", "label": "Flex"},
-    {"id": "diesel", "label": "Diesel"},
-    {"id": "eletrico", "label": "Elétrico"},
-    {"id": "hibrido", "label": "Híbrido"},
-    {"id": "gnv", "label": "GNV"},
-]
+LOCOMOTIVA_COMBUSTIVEL_LABELS = {item["label"] for item in LOCOMOTIVA_COMBUSTIVEIS}
 
-VEICULO_MARCAS = [
-    {
-        "id": "vw",
-        "label": "Volkswagen",
-        "models": [
-            {"id": "gol", "label": "Gol", "tipo_id": "automovel"},
-            {"id": "virtus", "label": "Virtus", "tipo_id": "automovel"},
-            {"id": "saveiro", "label": "Saveiro", "tipo_id": "caminhonete"},
-            {"id": "polo", "label": "Polo", "tipo_id": "automovel"},
-        ],
-    },
-    {
-        "id": "ford",
-        "label": "Ford",
-        "models": [
-            {"id": "ranger", "label": "Ranger", "tipo_id": "caminhonete"},
-            {"id": "transit", "label": "Transit", "tipo_id": "van"},
-            {"id": "territory", "label": "Territory", "tipo_id": "suv"},
-            {"id": "ka", "label": "Ka", "tipo_id": "automovel"},
-            {"id": "ka_plus", "label": "Ka Plus", "tipo_id": "automovel"},
-        ],
-    },
-    {
-        "id": "toyota",
-        "label": "Toyota",
-        "models": [
-            {"id": "corolla", "label": "Corolla", "tipo_id": "automovel"},
-            {"id": "corolla-cross", "label": "Corolla Cross", "tipo_id": "suv"},
-            {"id": "hilux", "label": "Hilux", "tipo_id": "caminhonete"},
-        ],
-    },
-    {
-        "id": "honda",
-        "label": "Honda",
-        "models": [
-            {"id": "civic", "label": "Civic", "tipo_id": "automovel"},
-            {"id": "city", "label": "City", "tipo_id": "automovel"},
-            {"id": "hrv", "label": "HR-V", "tipo_id": "suv"},
-        ],
-    },
-    {
-        "id": "hyundai",
-        "label": "Hyundai",
-        "models": [
-            {"id": "hb20", "label": "HB20", "tipo_id": "automovel"},
-            {"id": "hb20s", "label": "HB20S", "tipo_id": "automovel"},
-            {"id": "creta", "label": "Creta", "tipo_id": "suv"},
-        ],
-    },
-    {
-        "id": "fiat",
-        "label": "Fiat",
-        "models": [
-            {"id": "strada", "label": "Strada", "tipo_id": "caminhonete"},
-            {"id": "toro", "label": "Toro", "tipo_id": "caminhonete"},
-            {"id": "cronos", "label": "Cronos", "tipo_id": "automovel"},
-        ],
-    },
-]
-
-FUEL_LEVELS = ["vazio", "1/4", "1/2", "3/4", "cheio"]
 
 LEVEL_STATUS_COLORS = {
     "safe": "#1ec592",
@@ -610,6 +536,123 @@ def fetch_operacao_elevadores() -> list[dict]:
     return equipamentos
 
 
+def _is_superadm_session() -> bool:
+    session_user = session.get("user") or {}
+    return (session_user.get("role") or "").strip().lower() == "superadm"
+
+
+def fetch_locomotivas_admin(
+    search_term: str | None = None,
+    sort_by: str = "modelo",
+    sort_dir: str = "asc",
+    page: int = 1,
+    per_page: int = 10,
+) -> dict:
+    client = get_supabase_service() or require_supabase()
+    try:
+        response = (
+            client.table("equipamentos")
+            .select("id, nome, tipo, nivelAtual, dados")
+            .eq("tipo", "Locomotiva")
+            .order("nome", desc=False)
+            .limit(500)
+            .execute()
+        )
+        rows = response.data or []
+    except Exception as exc:
+        print(f"[WARN] Erro ao consultar locomotivas: {exc}", flush=True)
+        return {"items": [], "total": 0, "total_pages": 1, "page": 1}
+
+    query = (search_term or "").strip().lower()
+    locomotivas: list[dict] = []
+    for row in rows:
+        dados = _coerce_mapping(row.get("dados"))
+        tag_value = str(dados.get("tag") or row.get("nome") or "").strip()
+        modelo_value = str(dados.get("modelo") or "").strip()
+        combustivel_value = str(dados.get("combustivel") or "").strip()
+        tanque_value = _safe_float(dados.get("tanque"))
+        nivel_value = _normalize_level_percentage(_safe_float(row.get("nivelAtual")))
+
+        if query:
+            haystack = f"{tag_value} {modelo_value}".lower()
+            if query not in haystack:
+                continue
+
+        locomotivas.append(
+            {
+                "id": row.get("id"),
+                "tag": tag_value,
+                "modelo": modelo_value,
+                "combustivel": combustivel_value,
+                "volume_tanque": tanque_value,
+                "nivel_atual": nivel_value,
+                "nivel_display": f"{nivel_value:.0f}%" if nivel_value is not None else "—",
+                "foto_url": None,
+            }
+        )
+
+    allowed_sort = {"modelo", "tag", "combustivel", "nivel"}
+    sort_field = sort_by if sort_by in allowed_sort else "modelo"
+    direction = "desc" if sort_dir == "desc" else "asc"
+    reverse_sort = direction == "desc"
+
+    def _sort_key(item: dict):
+        if sort_field == "nivel":
+            nivel = item.get("nivel_atual")
+            return -1 if nivel is None else float(nivel)
+        value = item.get(sort_field)
+        return str(value or "").lower()
+
+    locomotivas.sort(key=_sort_key, reverse=reverse_sort)
+
+    total = len(locomotivas)
+    total_pages = max(1, math.ceil(total / max(1, per_page)))
+    safe_page = max(1, min(page, total_pages))
+    start = (safe_page - 1) * per_page
+    end = start + per_page
+    page_items = locomotivas[start:end]
+
+    for item in page_items:
+        item_id = item.get("id")
+        item["foto_url"] = fetch_vehicle_photo(str(item_id)) if item_id else None
+
+    return {
+        "items": page_items,
+        "total": total,
+        "total_pages": total_pages,
+        "page": safe_page,
+        "sort_by": sort_field,
+        "sort_dir": direction,
+    }
+
+
+def upload_vehicle_photo(veiculo_id: str, photo_file) -> str | None:
+    if not veiculo_id or not photo_file or not getattr(photo_file, "filename", ""):
+        return None
+
+    filename = secure_filename(photo_file.filename)
+    if not filename:
+        return None
+
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    if ext not in {"jpg", "jpeg", "png", "webp"}:
+        raise ValueError("Formato de imagem inválido. Use JPG, PNG ou WEBP.")
+
+    file_bytes = photo_file.read()
+    if not file_bytes:
+        return None
+
+    content_type = getattr(photo_file, "mimetype", None) or "image/jpeg"
+    storage = require_supabase().storage.from_("veiculos")
+
+    delete_vehicle_photos(veiculo_id)
+
+    final_name = f"foto_{uuid.uuid4().hex[:8]}.{ext}"
+    upload_path = f"{veiculo_id}/{final_name}"
+    storage.upload(upload_path, file_bytes, {"content-type": content_type, "upsert": "true"})
+    return storage.get_public_url(upload_path)
+
+
 def _normalize_areas(raw) -> list[str]:
     """Ensure we always work with a clean list of area strings."""
     if raw is None:
@@ -783,6 +826,9 @@ def add_no_cache_headers(response):
         "register",
         "login",
         "home",
+        "locomotivas",
+        "reservatorios",
+        "admin_locomotivas",
     }
     if request.endpoint in no_cache_endpoints:
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -848,6 +894,23 @@ def home():
         fuel_levels=fuel_levels,
         last_refresh=last_refresh,
         active_tab="home",
+        active_section="geradores",
+    )
+
+
+@app.route("/locomotivas")
+def locomotivas():
+    return render_template(
+        "locomotivas.html",
+        active_section="locomotivas",
+    )
+
+
+@app.route("/reservatorios")
+def reservatorios():
+    return render_template(
+        "reservatorios.html",
+        active_section="reservatorios",
     )
 
 
@@ -1192,6 +1255,208 @@ def lista_usuarios():
             continue
         usuarios.append(item)
     return render_template("usuarios_list.html", usuarios=usuarios, areas=REGISTER_AREAS)
+
+
+@app.route("/admin/locomotivas")
+@login_required("admin")
+def admin_locomotivas():
+    if not _is_superadm_session():
+        flash("Acesso não autorizado para este perfil.", "error")
+        return redirect(url_for("home"))
+
+    search_term = (request.args.get("q") or "").strip()
+    sort_by = (request.args.get("sort_by") or "modelo").strip().lower()
+    sort_dir = (request.args.get("sort_dir") or "asc").strip().lower()
+    try:
+        page = int((request.args.get("page") or "1").strip())
+    except ValueError:
+        page = 1
+
+    result = fetch_locomotivas_admin(
+        search_term=search_term,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        page=page,
+        per_page=10,
+    )
+
+    current_page = result.get("page", 1)
+    total_pages = result.get("total_pages", 1)
+    page_start = max(1, current_page - 2)
+    page_end = min(total_pages, current_page + 2)
+    page_numbers = list(range(page_start, page_end + 1))
+
+    return render_template(
+        "locomotivas_admin.html",
+        locomotivas=result.get("items", []),
+        total_locomotivas=result.get("total", 0),
+        current_page=current_page,
+        total_pages=total_pages,
+        page_numbers=page_numbers,
+        search_term=search_term,
+        sort_by=result.get("sort_by", "modelo"),
+        sort_dir=result.get("sort_dir", "asc"),
+        combustiveis=LOCOMOTIVA_COMBUSTIVEIS,
+    )
+
+
+@app.route("/admin/locomotivas/create", methods=["POST"])
+@login_required("admin")
+def criar_locomotiva():
+    if not _is_superadm_session():
+        flash("Acesso não autorizado para este perfil.", "error")
+        return redirect(url_for("home"))
+
+    tag = (request.form.get("tag") or "").strip()
+    modelo = (request.form.get("modelo") or "").strip()
+    combustivel = (request.form.get("combustivel") or "").strip()
+    tanque_raw = (request.form.get("volume_tanque") or "").replace(",", ".").strip()
+    nivel_raw = (request.form.get("nivel_atual") or "0").replace(",", ".").strip()
+    photo_file = request.files.get("foto")
+
+    if not tag or not modelo or not combustivel or not tanque_raw:
+        flash("Preencha foto, tag, modelo, combustível e volume do tanque.", "error")
+        return redirect(url_for("admin_locomotivas"))
+
+    if combustivel not in LOCOMOTIVA_COMBUSTIVEL_LABELS:
+        flash("Combustível inválido. Use apenas Diesel S10 ou Diesel S500.", "error")
+        return redirect(url_for("admin_locomotivas"))
+
+    if not photo_file or not photo_file.filename:
+        flash("A foto da locomotiva é obrigatória.", "error")
+        return redirect(url_for("admin_locomotivas"))
+
+    try:
+        volume_tanque = float(tanque_raw)
+        nivel_atual = float(nivel_raw)
+    except ValueError:
+        flash("Volume do tanque e nível atual devem ser numéricos.", "error")
+        return redirect(url_for("admin_locomotivas"))
+
+    if volume_tanque <= 0:
+        flash("Volume do tanque deve ser maior que zero.", "error")
+        return redirect(url_for("admin_locomotivas"))
+
+    nivel_atual = max(0.0, min(100.0, nivel_atual))
+
+    payload = {
+        "nome": tag,
+        "tipo": "Locomotiva",
+        "exibeNivel": True,
+        "nivelAtual": nivel_atual,
+        "dados": {
+            "tag": tag,
+            "modelo": modelo,
+            "combustivel": combustivel,
+            "tanque": volume_tanque,
+        },
+    }
+
+    client = get_supabase_service() or require_supabase()
+    try:
+        inserted = client.table("equipamentos").insert(payload).execute().data or []
+        created = inserted[0] if inserted else None
+        loco_id = str((created or {}).get("id") or "")
+
+        if loco_id and photo_file and photo_file.filename:
+            upload_vehicle_photo(loco_id, photo_file)
+
+        flash("Locomotiva cadastrada com sucesso.", "success")
+    except Exception as exc:
+        flash(f"Erro ao cadastrar locomotiva: {exc}", "error")
+
+    return redirect(url_for("admin_locomotivas"))
+
+
+@app.route("/admin/locomotivas/<string:loco_id>/edit", methods=["POST"])
+@login_required("admin")
+def editar_locomotiva(loco_id: str):
+    if not _is_superadm_session():
+        flash("Acesso não autorizado para este perfil.", "error")
+        return redirect(url_for("home"))
+
+    tag = (request.form.get("tag") or "").strip()
+    modelo = (request.form.get("modelo") or "").strip()
+    combustivel = (request.form.get("combustivel") or "").strip()
+    tanque_raw = (request.form.get("volume_tanque") or "").replace(",", ".").strip()
+    nivel_raw = (request.form.get("nivel_atual") or "0").replace(",", ".").strip()
+
+    if not tag or not modelo or not combustivel or not tanque_raw:
+        flash("Preencha tag, modelo, combustível e volume do tanque.", "error")
+        return redirect(url_for("admin_locomotivas"))
+
+    if combustivel not in LOCOMOTIVA_COMBUSTIVEL_LABELS:
+        flash("Combustível inválido. Use apenas Diesel S10 ou Diesel S500.", "error")
+        return redirect(url_for("admin_locomotivas"))
+
+    try:
+        volume_tanque = float(tanque_raw)
+        nivel_atual = float(nivel_raw)
+    except ValueError:
+        flash("Volume do tanque e nível atual devem ser numéricos.", "error")
+        return redirect(url_for("admin_locomotivas"))
+
+    if volume_tanque <= 0:
+        flash("Volume do tanque deve ser maior que zero.", "error")
+        return redirect(url_for("admin_locomotivas"))
+
+    nivel_atual = max(0.0, min(100.0, nivel_atual))
+
+    client = get_supabase_service() or require_supabase()
+    try:
+        current = (
+            client.table("equipamentos")
+            .select("id, dados")
+            .eq("id", loco_id)
+            .eq("tipo", "Locomotiva")
+            .single()
+            .execute()
+            .data
+        ) or {}
+        dados = _coerce_mapping(current.get("dados"))
+        dados.update(
+            {
+                "tag": tag,
+                "modelo": modelo,
+                "combustivel": combustivel,
+                "tanque": volume_tanque,
+            }
+        )
+
+        update_payload = {
+            "nome": tag,
+            "nivelAtual": nivel_atual,
+            "dados": dados,
+        }
+        client.table("equipamentos").update(update_payload).eq("id", loco_id).eq("tipo", "Locomotiva").execute()
+
+        photo_file = request.files.get("foto")
+        if photo_file and photo_file.filename:
+            upload_vehicle_photo(loco_id, photo_file)
+
+        flash("Locomotiva atualizada com sucesso.", "success")
+    except Exception as exc:
+        flash(f"Erro ao editar locomotiva: {exc}", "error")
+
+    return redirect(url_for("admin_locomotivas"))
+
+
+@app.route("/admin/locomotivas/<string:loco_id>/delete", methods=["POST"])
+@login_required("admin")
+def deletar_locomotiva(loco_id: str):
+    if not _is_superadm_session():
+        flash("Acesso não autorizado para este perfil.", "error")
+        return redirect(url_for("home"))
+
+    client = get_supabase_service() or require_supabase()
+    try:
+        client.table("equipamentos").delete().eq("id", loco_id).eq("tipo", "Locomotiva").execute()
+        delete_vehicle_photos(loco_id)
+        flash("Locomotiva excluída com sucesso.", "success")
+    except Exception as exc:
+        flash(f"Erro ao excluir locomotiva: {exc}", "error")
+
+    return redirect(url_for("admin_locomotivas"))
 
 
 @app.route("/admin/numeros")

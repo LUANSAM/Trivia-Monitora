@@ -15,7 +15,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>
-<body data-auth="{% if session.get('user') %}1{% else %}0{% endif %}">
+<body data-auth="{% if session.get('user') %}1{% else %}0{% endif %}" data-section="{{ active_section or '' }}" data-endpoint="{{ request.endpoint or '' }}">
     <div class="app-shell">
         <header class="app-header">
             <button class="menu-toggle" type="button" data-sidenav-toggle aria-label="Abrir menu" aria-controls="appSidenav" aria-expanded="false">
@@ -32,6 +32,8 @@
                 </div>
             </a>
         </header>
+
+        {% set show_section_tabs = request.endpoint in ['home', 'locomotivas', 'reservatorios'] %}
 
         <div class="sidenav-overlay" data-sidenav-overlay></div>
         <aside id="appSidenav" class="sidenav" aria-hidden="true">
@@ -107,6 +109,16 @@
                     </button>
                     {% endif %}
                     {% if session.get('user') and (session.get('user').get('role', '') | lower) == 'superadm' %}
+                    <a class="nav-link" href="{{ url_for('admin_locomotivas') }}">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 17h18"></path>
+                            <path d="M5 17l2-6h10l2 6"></path>
+                            <circle cx="8" cy="18" r="2"></circle>
+                            <circle cx="16" cy="18" r="2"></circle>
+                            <path d="M8 11V7a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4"></path>
+                        </svg>
+                        <span class="nav-text">Gestão Locomotivas</span>
+                    </a>
                     <a class="nav-link" href="{{ url_for('dashboard_numeros') }}">
                         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="4" y1="9" x2="20" y2="9"/>
@@ -149,9 +161,22 @@
 
         
 
-        <main class="app-main">
-            {% block content %}{% endblock %}
-        </main>
+        {% if show_section_tabs %}
+        <div class="section-frame section-frame--{{ active_section or 'geradores' }}">
+            <nav class="section-tabs section-tabs--{{ active_section or 'geradores' }}" aria-label="Seções do monitoramento">
+                <a class="section-tab section-tab--geradores{% if active_section == 'geradores' %} is-active{% endif %}" href="{{ url_for('home') }}">Geradores</a>
+                <a class="section-tab section-tab--locomotivas{% if active_section == 'locomotivas' %} is-active{% endif %}" href="{{ url_for('locomotivas') }}">Locomotivas</a>
+                <a class="section-tab section-tab--reservatorios{% if active_section == 'reservatorios' %} is-active{% endif %}" href="{{ url_for('reservatorios') }}">Reservatórios</a>
+            </nav>
+            <main class="app-main app-main--sectioned">
+        {% else %}
+            <main class="app-main">
+        {% endif %}
+                {% block content %}{% endblock %}
+            </main>
+        {% if show_section_tabs %}
+        </div>
+        {% endif %}
     </div>
 
     <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
